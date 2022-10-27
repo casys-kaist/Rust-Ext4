@@ -153,7 +153,7 @@ where
     let mut rw = get_rw();
     if at < entries_cnt as usize {
         // p -> p + 1
-        for i in (at + 1..entries_cnt as usize - 1).rev() {
+        for i in (at + 1..entries_cnt as usize).rev() {
             rw.write_u32(12 * i, rw.read_u32(12 * i - 12));
             rw.write_u32(12 * i + 4, rw.read_u32(12 * i - 12 + 4));
             rw.write_u32(12 * i + 8, rw.read_u32(12 * i - 12 + 8));

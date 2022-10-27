@@ -222,7 +222,6 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
         root.1 = root_index;
 
         let mut last_node = root_index.and_then(|idx| root.0.get(idx));
-
         for _ in (0..root.0.get_depth()).rev() {
             if let Some(ext) = last_node.take() {
                 let node = fs

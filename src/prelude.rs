@@ -42,9 +42,13 @@ mod inner {
             };
         }
     }
-
+    #[cfg(feature = "extern_print")]
+    #[allow(unused_imports)]
+    pub use printer::*;
     pub use synchronizations::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 }
+#[cfg(feature = "extern_print")]
+pub use inner::*;
 
 #[cfg(any(test, feature = "std"))]
 mod inner {
