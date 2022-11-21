@@ -18,17 +18,17 @@ use crate::cache::Cache;
 use crate::filesystem::FileSystem;
 use crate::superblock::SuperBlock;
 use crate::transaction::{Collector, Transaction};
+use crate::types::Zero;
 use crate::{
     BlockGroupId, Config, FsError, InodeNumber, LogicalBlockNumber, RwLock, RwLockReadGuard,
     RwLockWriteGuard,
 };
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 
-pub(crate) type Block<D, const BLK_SIZE: usize> = RwLock<Box<[u8; BLK_SIZE]>, D>;
+pub(crate) type Block<B, D> = RwLock<B, D>;
 pub(crate) struct BlockRef<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> {
     lba: LogicalBlockNumber,
-    inner: Arc<Block<C::D, BLK_SIZE>>,
+    inner: Arc<Block<C::Buffer<BLK_SIZE>, C::D>>,
     _lt: core::marker::PhantomData<&'a ()>,
 }
 
@@ -39,21 +39,21 @@ impl<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> BlockRef<'a, C, BLK_
     }
 
     #[inline]
-    pub fn read(&self) -> RwLockReadGuard<Box<[u8; BLK_SIZE]>, C::D> {
+    pub fn read(&self) -> RwLockReadGuard<C::Buffer<BLK_SIZE>, C::D> {
         self.inner.read()
     }
 }
 
 impl<'a, C: Config, const BLK_SIZE: usize> BlockRef<'a, C, BLK_SIZE, true> {
     #[inline]
-    pub fn write(&self) -> RwLockWriteGuard<Box<[u8; BLK_SIZE]>, C::D> {
+    pub fn write(&self) -> RwLockWriteGuard<C::Buffer<BLK_SIZE>, C::D> {
         self.inner.write()
     }
 }
 
 pub struct Manager<C: Config, const BLK_SIZE: usize> {
     pub(crate) allocator: allocator::Allocator<C::S>,
-    blocks: Cache<LogicalBlockNumber, Block<C::D, BLK_SIZE>, C::D>,
+    blocks: Cache<LogicalBlockNumber, Block<C::Buffer<BLK_SIZE>, C::D>, C::D>,
     pub(crate) conf: C,
 }
 
@@ -145,7 +145,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
     fn _read_contents(
         &self,
         lba: LogicalBlockNumber,
-    ) -> Result<Arc<Block<C::D, BLK_SIZE>>, FsError> {
+    ) -> Result<Arc<Block<C::Buffer<BLK_SIZE>, C::D>>, FsError> {
         Ok(Arc::new(RwLock::new(
             self.conf
                 .read_bytes::<BLK_SIZE>(lba.0 as usize * BLK_SIZE)?,
@@ -199,7 +199,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
             .blocks
             .get_or_insert_arc::<_, ()>(lba, |_| {
                 created = true;
-                Ok(Arc::new(RwLock::new(Box::new([0; BLK_SIZE]))))
+                Ok(Arc::new(RwLock::new(C::Buffer::<BLK_SIZE>::zeroed())))
             })
             .map(|inner| BlockRef {
                 lba,
@@ -209,7 +209,10 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
             .unwrap())
     }
 
-    pub fn get_io_request(&self, lba: LogicalBlockNumber) -> Result<(usize, Box<[u8]>), FsError> {
+    pub fn get_io_request(
+        &self,
+        lba: LogicalBlockNumber,
+    ) -> Result<(usize, C::Buffer<BLK_SIZE>), FsError> {
         if let Some(blk) = self.blocks.get(&lba) {
             let guard = blk.read();
             Ok((lba.0 as usize * BLK_SIZE, guard.clone()))

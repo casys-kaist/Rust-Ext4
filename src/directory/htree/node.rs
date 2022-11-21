@@ -332,7 +332,7 @@ impl<
                         .ok_or(FsError::InvalidFs("Uninitialized data block in directory"))
                 })?;
             let blk = fs.blocks.get(lba)?;
-            for entry in DirectoryBlock::new(blk.read().as_ref(), fs).iter() {
+            for entry in DirectoryBlock::new(&**blk.read(), fs).iter() {
                 let entry = entry?;
                 if entry.get_name() == target && entry.get_inode().0 != 0 {
                     return Ok(Some(f(prev, entry)));
@@ -351,7 +351,7 @@ impl<
                         .ok_or(FsError::InvalidFs("Uninitialized data block in directory"))
                 })?;
             let blk = fs.blocks.get(lba)?;
-            for entry in DirectoryBlock::new(blk.read().as_ref(), fs).iter() {
+            for entry in DirectoryBlock::new(&**blk.read(), fs).iter() {
                 let entry = entry?;
                 if entry.get_name() == target && entry.get_inode().0 != 0 {
                     return Ok(Some(f(prev, entry)));
@@ -481,7 +481,7 @@ impl<
         // Put first half of data into old block.
         {
             let mut guard = blk.write();
-            let mut dblk = DirectoryBlock::new(guard.as_mut(), fs);
+            let mut dblk = DirectoryBlock::new(&mut **guard, fs);
             dblk.clear();
             for _ in 0..split_pos {
                 let DirEntry { inode, name, ty } = iter.next().unwrap();
@@ -491,7 +491,7 @@ impl<
         // Put remainder into new block.
         {
             let mut guard = new_blk.write();
-            let mut dblk = DirectoryBlock::new(guard.as_mut(), fs);
+            let mut dblk = DirectoryBlock::new(&mut **guard, fs);
             dblk.clear();
             for DirEntry { inode, name, ty } in iter {
                 dblk.insert_entry(name, ty.map(|de| de.into_file_type()), inode)?;
@@ -534,7 +534,7 @@ impl<
                 let lba = c.current().unwrap().get_initialized().unwrap();
                 let blk = fs.blocks.get_mut(lba, &tx.collector)?;
                 let mut guard = blk.write();
-                let mut dblk = DirectoryBlock::new(guard.as_mut(), fs);
+                let mut dblk = DirectoryBlock::new(&mut **guard, fs);
                 if dblk.insert_entry(entry, Some(de), child)? {
                     return Ok(());
                 }
@@ -575,7 +575,7 @@ impl<
                 })?;
             let blk = fs.blocks.get_mut(lba, collector)?;
             let mut guard = blk.write();
-            let mut db = DirectoryBlock::new(guard.as_mut(), fs);
+            let mut db = DirectoryBlock::new(&mut **guard, fs);
             let mut iter = db.iter_mut();
 
             while let Some(entry) = iter.next() {
@@ -599,7 +599,7 @@ impl<
                 })?;
             let blk = fs.blocks.get_mut(lba, collector)?;
             let mut guard = blk.write();
-            let mut db = DirectoryBlock::new(guard.as_mut(), fs);
+            let mut db = DirectoryBlock::new(&mut **guard, fs);
             let mut iter = db.iter_mut();
 
             while let Some(entry) = iter.next() {
@@ -627,7 +627,7 @@ impl<
                 cursor.or_allocated(true)?
             });
             let blk = fs.blocks.get_mut(b1, &tx.collector)?;
-            DirectoryBlock::new(blk.write().as_mut(), fs).clear();
+            DirectoryBlock::new(&mut **blk.write(), fs).clear();
         }
         inode.set_size(BLK_SIZE as u64 * 2, tx);
         let raw = fs.blocks.get_mut_noload(root_block_addr, &tx.collector)?;

@@ -43,7 +43,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
                 })?;
                 let blk = fs.blocks.get(lba)?;
 
-                for entry in DirectoryBlock::new(blk.read().as_ref(), fs).iter() {
+                for entry in DirectoryBlock::new(&**blk.read(), fs).iter() {
                     let entry = entry?;
                     if entry.get_name() == target && entry.get_inode().0 != 0 {
                         return Ok((
@@ -78,7 +78,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
             let guard = blk.read();
             let mut pos = 0;
             let mut pen: Option<DirectoryEntryDispatch<&[u8]>> = None;
-            let dblk = DirectoryBlock::new(guard.as_ref(), fs);
+            let dblk = DirectoryBlock::new(&**guard, fs);
             for en in dblk.iter() {
                 if pos <= offset {
                     pen = Some(en?);
@@ -123,7 +123,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
                 let lba = c.or_allocated(true)?;
                 let blk = fs.blocks.get_mut(lba, &tx.collector)?;
                 let mut guard = blk.write();
-                let mut dblk = DirectoryBlock::new(guard.as_mut(), fs);
+                let mut dblk = DirectoryBlock::new(&mut **guard, fs);
                 if grown {
                     dblk.clear();
                 }
@@ -160,7 +160,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
                     .ok_or(FsError::InvalidFs("Uninitialized data block in directory"))?;
                 let blk = fs.blocks.get_mut(lba, collector)?;
                 let mut guard = blk.write();
-                let mut dblk = DirectoryBlock::new(guard.as_mut(), fs);
+                let mut dblk = DirectoryBlock::new(&mut **guard, fs);
                 let mut iter = dblk.iter_mut();
                 while let Some(entry) = iter.next() {
                     let entry = entry?;

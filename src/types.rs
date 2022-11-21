@@ -17,6 +17,7 @@ use crate::superblock::SuperBlock;
 use crate::FsError;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::ops::{Deref, DerefMut};
 
 macro_rules! make_int_ty {
     ($t:ident, $inner:ty) => {
@@ -181,17 +182,28 @@ impl<C: Config, const BLK_SIZE: usize> FsObject<C, BLK_SIZE> {
     }
 }
 
+pub trait Zero {
+    fn zeroed() -> Self;
+}
+
+impl<const N: usize> Zero for Box<[u8; N]> {
+    fn zeroed() -> Self {
+        Box::new([0; N])
+    }
+}
+
 pub trait Config
 where
     Self: Send + Sync,
 {
     type D: crate::RwDreamer;
     type S: crate::Dreamer;
+    type Buffer<const N: usize>: Deref<Target = [u8; N]> + DerefMut + Zero + Send + Sync + Clone;
 
-    fn read_bytes<const N: usize>(&self, ofs: usize) -> Result<Box<[u8; N]>, FsError>;
+    fn read_bytes<const N: usize>(&self, ofs: usize) -> Result<Self::Buffer<N>, FsError>;
     fn write_bytes<T: AsRef<[u8]>>(&self, ofs: usize, buf: T) -> Result<(), FsError>;
 
-    fn read_vectored<B: Extend<Box<[u8; N]>>, const N: usize>(
+    fn read_vectored<B: Extend<Self::Buffer<N>>, const N: usize>(
         &self,
         b: &mut B,
         ofs: usize,
@@ -211,9 +223,12 @@ where
         Ok(())
     }
 
-    fn write_bios(&self, bio: Vec<(usize, Box<[u8]>)>) -> Result<(), FsError> {
+    fn write_bios<const N: usize>(
+        &self,
+        bio: Vec<(usize, Self::Buffer<N>)>,
+    ) -> Result<(), FsError> {
         for (ofs, buf) in bio.into_iter() {
-            self.write_bytes(ofs, buf)?;
+            self.write_bytes(ofs, &*buf)?;
         }
         Ok(())
     }
@@ -225,6 +240,7 @@ where
 impl Config for std::fs::File {
     type D = crate::prelude::OpaqueDreamer;
     type S = crate::prelude::SpinningDreamer;
+    type Buffer<const N: usize> = Box<[u8; N]>;
 
     fn read_bytes<const N: usize>(&self, ofs: usize) -> Result<Box<[u8; N]>, FsError> {
         use std::os::unix::fs::FileExt;

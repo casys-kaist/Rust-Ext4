@@ -98,7 +98,7 @@ impl<
             {
                 let blk = fs.blocks.get(lba)?;
                 let guard = blk.read();
-                let dir_blk = DirectoryBlock::new(guard.as_ref(), fs);
+                let dir_blk = DirectoryBlock::new(&**guard, fs);
                 for en in dir_blk.iter() {
                     let en = en?;
                     if en.get_inode().0 != 0 {
@@ -159,7 +159,7 @@ impl<
             {
                 let blk = fs.blocks.get(lba?)?;
                 let guard = blk.read();
-                let dblk = DirectoryBlock::new(guard.as_ref(), fs);
+                let dblk = DirectoryBlock::new(&**guard, fs);
 
                 let mut iter = dblk.iter();
                 while let Some(en) = iter.next() {

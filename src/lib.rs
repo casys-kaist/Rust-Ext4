@@ -18,7 +18,7 @@
 
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 #![deny(unsafe_code)]
-#![feature(array_chunks)]
+#![feature(array_chunks, generic_associated_types)]
 
 mod prelude;
 pub use prelude::*;
@@ -47,7 +47,9 @@ pub use crate::{directory::Directory, file::File, filesystem::FileSystem};
 use alloc::sync::Arc;
 pub use fs_core::{FileType, FsError, InodeMode};
 pub use inode::AddressingOutput;
-pub use types::{BlockGroupId, Config, FileBlockNumber, FsObject, InodeNumber, LogicalBlockNumber};
+pub use types::{
+    BlockGroupId, Config, FileBlockNumber, FsObject, InodeNumber, LogicalBlockNumber, Zero,
+};
 
 pub enum FsBlkSizeDispatch<C: Config> {
     Blk1024(Arc<FileSystem<C, 1024>>),

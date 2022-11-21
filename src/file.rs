@@ -14,8 +14,8 @@
 
 use crate::inode::{AddressingOutput, Inode};
 use crate::transaction::Transaction;
+use crate::types::Zero;
 use crate::{Config, FileBlockNumber, FsError};
-use alloc::boxed::Box;
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 
@@ -122,7 +122,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
     }
 
     #[inline]
-    pub fn read_slices<B: Extend<Box<[u8; 4096]>>>(
+    pub fn read_slices<B: Extend<C::Buffer<4096>>>(
         &mut self,
         iovec: &mut B,
         ofs: usize,
@@ -134,7 +134,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
 
         self.for_each_lba(FileBlockNumber((ofs / BLK_SIZE) as u32), len, |addr| {
             match addr {
-                AddressingOutput::Uninitialized => iovec.extend(Some(Box::new([0; 4096]))),
+                AddressingOutput::Uninitialized => iovec.extend(Some(C::Buffer::<4096>::zeroed())),
                 AddressingOutput::Initialized(lba) => {
                     if *start.get_or_insert(lba) + cnt != lba {
                         // Flush the request.

@@ -118,8 +118,8 @@ impl Events {
         events: LinkedList<Event>,
         collector: &Collector,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) -> WritebackGroup<BLK_SIZE> {
-        let mut wb_grp = WritebackGroup::default();
+    ) -> WritebackGroup<C, BLK_SIZE> {
+        let mut wb_grp = WritebackGroup::new();
 
         for log in events.into_iter() {
             match log {
@@ -293,15 +293,24 @@ impl<'a, C: Config> SbDirtyTracker<'a, C> {
     }
 }
 
-#[derive(Debug, Default)]
-struct WritebackGroup<const BLK_SIZE: usize> {
-    new_bitmap: HashMap<LogicalBlockNumber, Box<[u8; BLK_SIZE]>>,
+#[derive(Debug)]
+struct WritebackGroup<C: Config, const BLK_SIZE: usize> {
+    new_bitmap: HashMap<LogicalBlockNumber, C::Buffer<BLK_SIZE>>,
     bg_deltas: HashMap<BlockGroupId, BgDelta>,
     sb_delta: Option<SbDelta>,
     inode_ops: Vec<InodeOps>,
 }
 
-impl<const BLK_SIZE: usize> WritebackGroup<BLK_SIZE> {
+impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
+    pub fn new() -> Self {
+        Self {
+            new_bitmap: HashMap::new(),
+            bg_deltas: HashMap::new(),
+            sb_delta: None,
+            inode_ops: Vec::new(),
+        }
+    }
+
     #[inline]
     fn bg_delta(&mut self, bgid: BlockGroupId) -> &mut BgDelta {
         self.bg_deltas.entry(bgid).or_insert_with(BgDelta::default)
@@ -310,7 +319,7 @@ impl<const BLK_SIZE: usize> WritebackGroup<BLK_SIZE> {
     fn sb_delta(&mut self) -> &mut SbDelta {
         self.sb_delta.get_or_insert_with(SbDelta::default)
     }
-    fn set_bitmap<C: Config>(
+    fn set_bitmap(
         &mut self,
         bitmap_lba: LogicalBlockNumber,
         ofs: usize,
@@ -341,7 +350,7 @@ impl<const BLK_SIZE: usize> WritebackGroup<BLK_SIZE> {
             blk[grp] |= 1 << ofs;
         }
     }
-    fn unset_bitmap<C: Config>(
+    fn unset_bitmap(
         &mut self,
         bitmap_lba: LogicalBlockNumber,
         ofs: usize,
@@ -372,7 +381,7 @@ impl<const BLK_SIZE: usize> WritebackGroup<BLK_SIZE> {
         }
     }
 
-    pub fn flush<C: Config>(
+    pub fn flush(
         self,
         fs: &Arc<FileSystem<C, BLK_SIZE>>,
         collector: &Collector,
@@ -397,11 +406,11 @@ impl<const BLK_SIZE: usize> WritebackGroup<BLK_SIZE> {
         for op in inode_ops.into_iter() {
             Self::submit_inode_ops(fs, op, &mut raw_sb, collector)?;
         }
-        Self::submit_sb::<C>(sb_delta, raw_sb, collector)?;
+        Self::submit_sb(sb_delta, raw_sb, collector)?;
         Ok(())
     }
 
-    fn submit_block_group<C: Config>(
+    fn submit_block_group(
         fs: &FileSystem<C, BLK_SIZE>,
         bgid: BlockGroupId,
         BgDelta {
@@ -444,7 +453,7 @@ impl<const BLK_SIZE: usize> WritebackGroup<BLK_SIZE> {
         Ok(())
     }
 
-    fn submit_inode_ops<C: Config>(
+    fn submit_inode_ops(
         fs: &Arc<FileSystem<C, BLK_SIZE>>,
         op: InodeOps,
         raw_sb: &mut SbDirtyTracker<C>,
@@ -512,7 +521,7 @@ impl<const BLK_SIZE: usize> WritebackGroup<BLK_SIZE> {
         Ok(())
     }
 
-    fn submit_sb<C: Config>(
+    fn submit_sb(
         sb_delta: Option<SbDelta>,
         mut raw_sb: SbDirtyTracker<C>,
         collector: &Collector,

@@ -40,7 +40,7 @@ pub struct Shell<const BLK_SIZE: usize> {
 
 impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
     pub fn new(fs: Arc<FileSystem<std::fs::File, BLK_SIZE>>) -> Self {
-        let cwd = fs.root("/").unwrap();
+        let cwd = fs.root().unwrap();
         Shell {
             fs,
             cwd,
@@ -111,7 +111,7 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
 
         let mut dir = if path_iter.peek() == Some(&"/") {
             path_iter.next();
-            self.fs.root("/").unwrap()
+            self.fs.root().unwrap()
         } else {
             self.cwd.clone()
         };
