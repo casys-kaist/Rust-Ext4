@@ -174,13 +174,11 @@ pub fn write<const BLK_SIZE: usize>(
     let len = buf.len();
 
     buf.resize((len + 4095) & !4095, 0);
-    file.write_slices(
-        0,
-        buf.chunks(4096)
-            .map(|n| <&[u8; 4096]>::try_from(n).unwrap())
-            .collect(),
-        &tx,
-    )
-    .map(|_| file.set_size(len, &tx))
-    .and_then(|_| tx.done(&fs))
+    let iov = buf
+        .chunks(BLK_SIZE)
+        .map(|n| Box::new(<&[u8; BLK_SIZE]>::try_from(n).unwrap().clone()))
+        .collect::<Vec<_>>();
+    file.write_slices(0, iov.iter().collect(), &tx)
+        .map(|_| file.set_size(len, &tx))
+        .and_then(|_| tx.done(&fs))
 }

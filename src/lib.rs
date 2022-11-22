@@ -18,7 +18,7 @@
 
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 #![deny(unsafe_code)]
-#![feature(array_chunks, generic_associated_types)]
+#![feature(array_chunks, generic_associated_types, min_specialization)]
 
 mod prelude;
 pub use prelude::*;
@@ -58,18 +58,8 @@ pub enum FsBlkSizeDispatch<C: Config> {
 }
 
 /// Open filesystem from io.
-pub fn open_fs<C: Config>(conf: C) -> Result<FsBlkSizeDispatch<C>, FsError> {
-    match superblock::new_sb(&conf)? {
-        superblock::SuperBlockType::Blk1024(sb) => {
-            FileSystem::new(conf, sb).map(FsBlkSizeDispatch::Blk1024)
-        }
-        superblock::SuperBlockType::Blk2048(sb) => {
-            FileSystem::new(conf, sb).map(FsBlkSizeDispatch::Blk2048)
-        }
-        superblock::SuperBlockType::Blk4096(sb) => {
-            FileSystem::new(conf, sb).map(FsBlkSizeDispatch::Blk4096)
-        }
-    }
+pub fn open_fs<C: Config, const N: usize>(conf: C) -> Result<Arc<FileSystem<C, N>>, FsError> {
+    superblock::new_sb(&conf).and_then(|sb| FileSystem::new(conf, sb))
 }
 
 pub mod format;

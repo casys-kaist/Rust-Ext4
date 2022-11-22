@@ -16,7 +16,6 @@ mod raw;
 
 use crate::transaction::Transaction;
 use crate::{BlockGroupId, Config, FsError, InodeNumber, LogicalBlockNumber, TicketLock};
-use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use bitflags::bitflags;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -113,7 +112,7 @@ pub struct SuperBlock<C: Config, const BLK_SIZE: usize> {
     // inode -> (prev, next)
     pub orphaned_inode: TicketLock<BTreeMap<InodeNumber, (InodeNumber, InodeNumber)>, C::S>,
 
-    pub(crate) manipulator: TicketLock<Manipulator<Box<[u8]>>, C::S>,
+    pub(crate) manipulator: TicketLock<Manipulator<C, BLK_SIZE>, C::S>,
 }
 
 impl<C: Config, const BLK_SIZE: usize> SuperBlock<C, BLK_SIZE> {
@@ -127,7 +126,7 @@ impl<C: Config, const BLK_SIZE: usize> SuperBlock<C, BLK_SIZE> {
         }
     }
 
-    pub(crate) fn from_raw(mut manipulator: Manipulator<Box<[u8]>>) -> Result<Self, FsError> {
+    pub(crate) fn from_raw(mut manipulator: Manipulator<C, BLK_SIZE>) -> Result<Self, FsError> {
         const EXT4_MIN_BLOCK_GROUP_DESCRIPTOR_SIZE: usize = 32;
 
         let desc_size = manipulator.desc_size().get() as usize;
@@ -313,19 +312,17 @@ impl<C: Config, const BLK_SIZE: usize> SuperBlock<C, BLK_SIZE> {
     }
 }
 
-pub enum SuperBlockType<C: Config> {
-    Blk1024(SuperBlock<C, 1024>),
-    Blk2048(SuperBlock<C, 2048>),
-    Blk4096(SuperBlock<C, 4096>),
-}
-
-pub(crate) fn new_sb<C: Config>(c: &C) -> Result<SuperBlockType<C>, FsError> {
+pub(crate) fn new_sb<C: Config, const N: usize>(c: &C) -> Result<SuperBlock<C, N>, FsError> {
     let mut manipulator = Manipulator::from_disk(c)?;
-
-    match manipulator.log_block_size().get() {
-        0 => SuperBlock::from_raw(manipulator).map(SuperBlockType::Blk1024),
-        1 => SuperBlock::from_raw(manipulator).map(SuperBlockType::Blk2048),
-        2 => SuperBlock::from_raw(manipulator).map(SuperBlockType::Blk4096),
-        _ => Err(FsError::InvalidFs("Block size not in 1024, 2048, 4096")),
+    let lbs = match N {
+        1024 => 0,
+        2048 => 1,
+        4096 => 2,
+        _ => unreachable!(),
+    };
+    if manipulator.log_block_size().get() != lbs {
+        Err(FsError::InvalidFs("Block size is differ from expectation."))
+    } else {
+        SuperBlock::from_raw(manipulator)
     }
 }

@@ -12,48 +12,58 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::types::Zero;
 use crate::utils::ByteRw;
 use crate::{Config, FsError};
-use alloc::boxed::Box;
 
-pub(crate) struct Manipulator<T>
-where
-    T: core::convert::AsRef<[u8]>,
-{
-    pub rw: ByteRw<T>,
+#[repr(transparent)]
+pub(crate) struct Wrapper<C: Config>(pub C::Buffer<1024>);
+
+impl<C: Config> core::convert::AsRef<[u8]> for Wrapper<C> {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref().as_ref()
+    }
 }
 
-impl Manipulator<Box<[u8]>> {
-    #[inline]
-    pub fn from_disk<IO>(dev: &IO) -> Result<Self, FsError>
-    where
-        IO: Config,
-    {
-        let b = dev.read_bytes::<4096>(0)?;
+impl<C: Config> core::convert::AsMut<[u8]> for Wrapper<C> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.as_mut().as_mut()
+    }
+}
 
-        let mut sb: Box<[u8]> = Box::new([0; 1024]);
-        sb.copy_from_slice(&b[1024..2048]);
+pub(crate) struct Manipulator<C: Config, const N: usize> {
+    pub rw: ByteRw<Wrapper<C>>,
+}
+
+impl<C: Config, const N: usize> Manipulator<C, N> {
+    #[inline]
+    pub fn from_disk(dev: &C) -> Result<Self, FsError> {
+        let b = if N == 1024 {
+            dev.read_bytes::<1024>(N)?
+        } else {
+            let mut b = C::Buffer::<1024>::zeroed();
+            let o = dev.read_bytes::<N>(0)?;
+            b.as_mut().copy_from_slice(&o[1024..2048]);
+            b
+        };
+
         Ok(Self {
-            rw: ByteRw::new(sb),
+            rw: ByteRw::new(Wrapper(b)),
         })
     }
 
     #[inline]
-    pub fn writeback<IO>(&self, dev: &IO) -> Result<(), FsError>
-    where
-        IO: Config,
-    {
+    pub fn writeback(&self, dev: &C) -> Result<(), FsError> {
         // FIXME
-        dev.write_bytes(1024, self.rw.inner()).map(|_| ())
+        dev.write_bytes(1024, &self.rw.inner().0).map(|_| ())
     }
 }
 
-impl<T> Manipulator<T>
-where
-    T: core::convert::AsRef<[u8]>,
-{
-    pub fn from_bytes(b: T) -> Self {
-        Self { rw: ByteRw::new(b) }
+impl<C: Config, const N: usize> Manipulator<C, N> {
+    pub fn from_bytes(b: C::Buffer<1024>) -> Self {
+        Self {
+            rw: ByteRw::new(Wrapper(b)),
+        }
     }
 
     pub fn is_feature_incompat64(&self) -> bool {
@@ -64,7 +74,7 @@ where
     }
 
     crate::fs_field! {
-        ty: T;
+        ty: Wrapper<C>;
         /// Total inode count.
         inodes_count : @0x0, u32;
         /// Total block count.

@@ -17,12 +17,12 @@ use crate::inode::Inode;
 use crate::superblock::{
     self, Ext4FeatureCompatible, Ext4FeatureIncompatible, Ext4FeatureReadOnly, SuperBlock,
 };
+use crate::types::Zero;
 use crate::utils::ByteRw;
 use crate::{BlockGroupId, Config, FileSystem, FileType, FsError, LogicalBlockNumber};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec;
-
 const DESC_SIZE: u16 = 32;
 
 #[derive(Clone, Copy)]
@@ -94,7 +94,7 @@ fn make_sb<C: Config, const BLK_SIZE: usize>(
         inodes_per_group,
     }: FormatAux,
 ) -> SuperBlock<C, BLK_SIZE> {
-    let mut sb = superblock::Manipulator::from_bytes(vec![0; 1024].into_boxed_slice());
+    let mut sb = superblock::Manipulator::from_bytes(C::Buffer::<1024>::zeroed());
     sb.feature_compat().set(feat_com.bits());
     sb.feature_incompat().set(feat_incom.bits());
     sb.feature_ro_compat().set(feat_ro.bits());
@@ -118,9 +118,9 @@ fn make_sb<C: Config, const BLK_SIZE: usize>(
     sb.first_inode().set(11);
     sb.inode_size().set(256);
 
-    sb.rw.b[0x68..0x78].copy_from_slice(uuid);
-    sb.rw.b[0x78..0x88].copy_from_slice(volumn_name);
-    sb.rw.b[0xEC..0xFC].copy_from_slice(hash_seed);
+    sb.rw.b.as_mut()[0x68..0x78].copy_from_slice(uuid);
+    sb.rw.b.as_mut()[0x78..0x88].copy_from_slice(volumn_name);
+    sb.rw.b.as_mut()[0xEC..0xFC].copy_from_slice(hash_seed);
 
     sb.default_hash_version()
         .set(crate::hasher::HashVersion::HalfMd4 as u8);
@@ -189,7 +189,8 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             let mut inode_bitmap = ByteRw::new(
                 block_map
                     .entry(LogicalBlockNumber(start_block + 2))
-                    .or_insert_with(|| vec![0; BLK_SIZE].into_boxed_slice()),
+                    .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed())
+                    .as_mut(),
             );
             if bgid.0 == 0 {
                 set_bitmap(&mut inode_bitmap, 0..1);
@@ -207,7 +208,8 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             let mut block_bitmap = ByteRw::new(
                 block_map
                     .entry(LogicalBlockNumber(start_block + 1))
-                    .or_insert_with(|| vec![0; BLK_SIZE].into_boxed_slice()),
+                    .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed())
+                    .as_mut(),
             );
             if sb.is_super_in_bg(bgid) {
                 set_bitmap(
@@ -219,7 +221,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
                     let ofs = BLK_SIZE
                         * (sb.first_data_block as usize
                             + bgid.0 as usize * sb.blocks_per_group as usize);
-                    dev.write_bytes(ofs, sb_manipulator.rw.inner())?;
+                    dev.write_bytes(ofs, &sb_manipulator.rw.inner().0)?;
                 }
             }
             // Set block bitmap, inode bitmap, inode table as used block.
@@ -243,15 +245,15 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
         {
             block_map
                 .entry(lba)
-                .or_insert_with(|| vec![0; BLK_SIZE].into_boxed_slice());
+                .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed());
         }
         // Fill bg meta
         {
             let mut bg = block_group::Manipulator::new(
                 &mut block_map
                     .entry(lba)
-                    .or_insert_with(|| vec![0; BLK_SIZE].into_boxed_slice())
-                    [index..index + sb.block_desc_size],
+                    .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed())
+                    .as_mut()[index..index + sb.block_desc_size],
             );
 
             bg.block_bitmap().set(start_block + 1);
@@ -273,7 +275,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             .set(blocks_cnt + free_blocks as u64);
     }
     for (lba, block) in block_map.into_iter() {
-        dev.write_bytes(lba.0 as usize * BLK_SIZE, block.as_ref())?;
+        dev.write_bytes(lba.0 as usize * BLK_SIZE, &block)?;
     }
     Ok(())
 }
@@ -327,7 +329,7 @@ pub fn format<C: Config, const BLK_SIZE: usize>(
     );
     let mut sb = make_sb::<C, BLK_SIZE>(aux);
     fill_bg(&dev, &mut sb)?;
-    dev.write_bytes(1024, sb.manipulator.lock().rw.inner())?;
+    dev.write_bytes(1024, &sb.manipulator.lock().rw.inner().0)?;
     let fs = FileSystem::<C, BLK_SIZE>::new(dev, sb)?;
     make_root(&fs)?;
     Ok(fs)

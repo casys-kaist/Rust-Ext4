@@ -78,7 +78,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
     pub fn write_slices(
         &mut self,
         ofs: usize,
-        iovec: Vec<&[u8; 4096]>,
+        iovec: Vec<&C::Buffer<BLK_SIZE>>,
         tx: &Transaction,
     ) -> Result<(), FsError> {
         let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
@@ -95,7 +95,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
 
         let len = iovec.len() * (4096 / BLK_SIZE);
         let (mut cnt, mut batch, mut start) = (0, Vec::new(), None);
-        let mut slices = iovec.into_iter().flat_map(|s| s.array_chunks::<BLK_SIZE>());
+        let mut slices = iovec.into_iter();
         self.for_each_lba_mut(fba, len, tx, |lba| {
             let slice = slices.next().unwrap();
             if *start.get_or_insert(lba) + cnt != lba {

@@ -201,7 +201,8 @@ where
     type Buffer<const N: usize>: Deref<Target = [u8; N]> + DerefMut + Zero + Send + Sync + Clone;
 
     fn read_bytes<const N: usize>(&self, ofs: usize) -> Result<Self::Buffer<N>, FsError>;
-    fn write_bytes<T: AsRef<[u8]>>(&self, ofs: usize, buf: T) -> Result<(), FsError>;
+    fn write_bytes<const N: usize>(&self, ofs: usize, buf: &Self::Buffer<N>)
+        -> Result<(), FsError>;
 
     fn read_vectored<B: Extend<Self::Buffer<N>>, const N: usize>(
         &self,
@@ -215,9 +216,13 @@ where
         Ok(())
     }
 
-    fn write_vectored<T: AsRef<[u8]>>(&self, mut ofs: usize, bufs: &[T]) -> Result<(), FsError> {
+    fn write_vectored<const N: usize>(
+        &self,
+        mut ofs: usize,
+        bufs: &[&Self::Buffer<N>],
+    ) -> Result<(), FsError> {
         for buf in bufs {
-            self.write_bytes(ofs, buf.as_ref())?;
+            self.write_bytes(ofs, buf)?;
             ofs += buf.as_ref().len();
         }
         Ok(())
@@ -228,7 +233,7 @@ where
         bio: Vec<(usize, Self::Buffer<N>)>,
     ) -> Result<(), FsError> {
         for (ofs, buf) in bio.into_iter() {
-            self.write_bytes(ofs, &*buf)?;
+            self.write_bytes(ofs, &buf)?;
         }
         Ok(())
     }
@@ -249,18 +254,24 @@ impl Config for std::fs::File {
             .map_err(|_| FsError::IoError)
             .map(|_| b)
     }
-    fn write_bytes<T: AsRef<[u8]>>(&self, ofs: usize, buf: T) -> Result<(), FsError> {
+    fn write_bytes<const N: usize>(
+        &self,
+        ofs: usize,
+        buf: &Self::Buffer<N>,
+    ) -> Result<(), FsError> {
         use std::os::unix::fs::FileExt;
         self.write_at(buf.as_ref(), ofs as u64)
             .map_err(|_| FsError::IoError)
             .map(|_| ())?;
         self.sync_data().map_err(|_| FsError::IoError)
     }
-    fn write_vectored<T: AsRef<[u8]>>(&self, mut ofs: usize, bufs: &[T]) -> Result<(), FsError> {
-        use std::os::unix::fs::FileExt;
+    fn write_vectored<const N: usize>(
+        &self,
+        mut ofs: usize,
+        bufs: &[&Self::Buffer<N>],
+    ) -> Result<(), FsError> {
         for buf in bufs {
-            self.write_at(buf.as_ref(), ofs as u64)
-                .map_err(|_| FsError::IoError)?;
+            self.write_bytes(ofs, buf)?;
             ofs += buf.as_ref().len();
         }
         self.sync_data().map_err(|_| FsError::IoError)?;

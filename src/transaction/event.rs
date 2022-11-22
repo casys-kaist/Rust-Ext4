@@ -21,7 +21,6 @@ use crate::superblock;
 use crate::{
     BlockGroupId, Config, FileType, FsError, InodeNumber, LogicalBlockNumber, TicketLockGuard,
 };
-use alloc::boxed::Box;
 use alloc::collections::LinkedList;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -267,13 +266,13 @@ fn get_inode<'a, 'b, C: Config + 'a, const BLK_SIZE: usize>(
     })
 }
 
-struct SbDirtyTracker<'a, C: Config> {
-    inner: TicketLockGuard<'a, superblock::Manipulator<Box<[u8]>>, C::S>,
+struct SbDirtyTracker<'a, C: Config, const BLK_SIZE: usize> {
+    inner: TicketLockGuard<'a, superblock::Manipulator<C, BLK_SIZE>, C::S>,
     dirty: bool,
 }
 
-impl<'a, C: Config> SbDirtyTracker<'a, C> {
-    fn new<const BLK_SIZE: usize>(fs: &'a Arc<FileSystem<C, BLK_SIZE>>) -> Self {
+impl<'a, C: Config, const BLK_SIZE: usize> SbDirtyTracker<'a, C, BLK_SIZE> {
+    fn new(fs: &'a Arc<FileSystem<C, BLK_SIZE>>) -> Self {
         Self {
             inner: fs.sb.manipulator.lock(),
             dirty: false,
@@ -287,7 +286,7 @@ impl<'a, C: Config> SbDirtyTracker<'a, C> {
         }
     }
 
-    fn get_mut(&mut self) -> Result<&mut superblock::Manipulator<Box<[u8]>>, FsError> {
+    fn get_mut(&mut self) -> Result<&mut superblock::Manipulator<C, BLK_SIZE>, FsError> {
         self.dirty = true;
         Ok(&mut *self.inner)
     }
@@ -456,7 +455,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
     fn submit_inode_ops(
         fs: &Arc<FileSystem<C, BLK_SIZE>>,
         op: InodeOps,
-        raw_sb: &mut SbDirtyTracker<C>,
+        raw_sb: &mut SbDirtyTracker<C, BLK_SIZE>,
         collector: &Collector,
     ) -> Result<(), FsError> {
         match op {
@@ -523,7 +522,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
 
     fn submit_sb(
         sb_delta: Option<SbDelta>,
-        mut raw_sb: SbDirtyTracker<C>,
+        mut raw_sb: SbDirtyTracker<C, BLK_SIZE>,
         collector: &Collector,
     ) -> Result<(), FsError> {
         if let Some(SbDelta {
