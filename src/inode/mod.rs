@@ -507,6 +507,10 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
         fs: &FileSystem<C, BLK_SIZE>,
         tx: &Transaction,
     ) -> Result<(), FsError> {
+        if self.rw.read().size / 4096 > fba.0 as u64 {
+            // If size is big enough, we don't need to extend the inode
+            return Ok(());
+        }
         dispatch_cursor_last_mut!(self, fs, tx, |mut c| {
             if let Some(mut rem) = fba.0.checked_sub(c.fba().0) {
                 while rem > 0 {

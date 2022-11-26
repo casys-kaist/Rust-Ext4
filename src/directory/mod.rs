@@ -195,9 +195,14 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
         Ok((ino, inode))
     }
 
-    pub fn remove_entry(&self, entry: &str, tx: &Transaction) -> Result<InodeNumber, FsError> {
+    pub fn remove_entry(
+        &self,
+        entry: &str,
+        tx: &Transaction,
+    ) -> Result<(InodeNumber, Arc<Inode<C, BLK_SIZE>>), FsError> {
+        // Inode must not be dropped before tx.done() is called.
         let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
-        self.do_remove_entry(entry, &fs, tx).map(|(ino, _)| ino)
+        self.do_remove_entry(entry, &fs, tx)
     }
 
     pub fn rename(

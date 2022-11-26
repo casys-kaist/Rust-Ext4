@@ -587,7 +587,10 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<(), FsError> {
         let leaf = self.get_leaf().unwrap();
-
+        #[cfg(feature = "extent_cache")]
+        {
+            self.cache = None;
+        }
         if leaf.is_init {
             fs.blocks.deallocate(
                 self.ino,
@@ -609,7 +612,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
                 )
                 .unwrap();
             } else {
-                node.set_entries_cnt(node.get_entries_cnt() - 1);
+                node.set_entries_cnt(node.get_entries_cnt().checked_sub(1).unwrap_or_default());
                 self.move_prev_with_cleanup(tx, fs)?;
             }
         });

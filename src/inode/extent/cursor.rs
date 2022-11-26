@@ -203,11 +203,12 @@ impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> CursorMut<'a, 'b, 'c, C, BLK_
                 break;
             }
             self.path.truncate_last(
-                if l.block >= until {
-                    0
-                } else {
-                    (until.0 - l.block.0).try_into().unwrap()
-                },
+                until
+                    .0
+                    .checked_sub(l.block.0)
+                    .unwrap_or_default()
+                    .try_into()
+                    .unwrap(),
                 self.tx,
                 self.fs,
             )?;

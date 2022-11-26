@@ -22,7 +22,6 @@ use crate::utils::ByteRw;
 use crate::{BlockGroupId, Config, FileSystem, FileType, FsError, LogicalBlockNumber};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use alloc::vec;
 const DESC_SIZE: u16 = 32;
 
 #[derive(Clone, Copy)]

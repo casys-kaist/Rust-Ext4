@@ -254,13 +254,13 @@ impl<C: Config> ExtentTree<C> {
         let path = {
             let last = self.cache.try_read().ok().and_then(|n| n.as_ref().cloned());
 
-            let mut path: Path<&Self, D, BLK_SIZE, false> = Path::empty(self);
+            let mut path: Path<&Self, C, BLK_SIZE, false> = Path::empty(ino, self);
             match last {
                 Some(l) if l.contains(fba) => {
                     path.cache = Some(l);
                 }
                 _ => {
-                    path.reload_path(fba, fs)?;
+                    path.load(fba, fs)?;
                 }
             };
             path
@@ -289,13 +289,13 @@ impl<C: Config> ExtentTree<C> {
         #[cfg(feature = "extent_cache")]
         let path = {
             let last = self.cache.try_read().ok().and_then(|n| n.as_ref().cloned());
-            let mut path: Path<&mut Self, D, BLK_SIZE, true> = Path::empty(self);
+            let mut path: Path<&mut Self, C, BLK_SIZE, true> = Path::empty(ino, self);
             match last {
                 Some(l) if l.contains(fba) => {
                     path.cache = Some(l);
                 }
                 _ => {
-                    path.reload_path(fba, tx, fs)?;
+                    path.load(fba, tx, fs)?;
                 }
             };
             path

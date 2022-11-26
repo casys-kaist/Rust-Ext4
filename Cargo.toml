@@ -17,7 +17,7 @@ rand = { version = "*" }
 crossbeam-utils = { version = "0.8", default-features = false }
 
 [features]
-default = ["dblock_cache"]
+default = ["dblock_cache", "extent_cache"]
 std = ["crossbeam-utils"]
 extern_print = []
 trace_ext4 = []

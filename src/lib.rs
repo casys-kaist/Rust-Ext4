@@ -20,6 +20,7 @@
 #![deny(unsafe_code)]
 #![feature(array_chunks, generic_associated_types, min_specialization)]
 
+#[macro_use]
 mod prelude;
 pub use prelude::*;
 
@@ -46,7 +47,8 @@ mod utils;
 pub use crate::{directory::Directory, file::File, filesystem::FileSystem};
 use alloc::sync::Arc;
 pub use fs_core::{FileType, FsError, InodeMode};
-pub use inode::AddressingOutput;
+pub use inode::{AddressingOutput, Inode};
+pub use transaction::Transaction;
 pub use types::{
     BlockGroupId, Config, FileBlockNumber, FsObject, InodeNumber, LogicalBlockNumber, Zero,
 };

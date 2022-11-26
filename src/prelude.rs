@@ -52,6 +52,7 @@ pub use inner::*;
 
 #[cfg(any(test, feature = "std"))]
 mod inner {
+    pub use std::{print, println};
     #[repr(transparent)]
     pub struct RwLock<V, D> {
         inner: std::sync::RwLock<V>,
@@ -105,6 +106,26 @@ mod inner {
                 inner: self.inner.read().unwrap(),
                 _p: std::marker::PhantomData,
             }
+        }
+        #[inline]
+        pub fn try_write(&self) -> Result<RwLockWriteGuard<V, D>, ()> {
+            self.inner
+                .try_write()
+                .map(|inner| RwLockWriteGuard {
+                    inner,
+                    _p: std::marker::PhantomData,
+                })
+                .map_err(|_| ())
+        }
+        #[inline]
+        pub fn try_read(&self) -> Result<RwLockReadGuard<V, D>, ()> {
+            self.inner
+                .try_read()
+                .map(|inner| RwLockReadGuard {
+                    inner,
+                    _p: std::marker::PhantomData,
+                })
+                .map_err(|_| ())
         }
     }
 

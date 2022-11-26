@@ -113,6 +113,7 @@ pub struct Events {
 }
 
 impl Events {
+    #[inline(never)]
     fn compress<C: Config, const BLK_SIZE: usize>(
         events: LinkedList<Event>,
         collector: &Collector,
@@ -135,7 +136,7 @@ impl Events {
                         ino,
                         cnt: count as i64,
                     });
-                    wb_grp.set_bitmap(bitmap_lba, ofs, count, fs);
+                    wb_grp.set_bitmap(bitmap_lba, ofs, count, collector, fs);
                 }
                 Event::BlockDeallocationOnBg(BlockDeallocationOnBg {
                     bgid,
@@ -147,7 +148,7 @@ impl Events {
                     wb_grp.bg_delta(bgid).free_blocks_cnt_delta += count as i64;
                     wb_grp.sb_delta().free_blocks_cnt_delta += count as i64;
                     wb_grp.inode_ops.push(InodeOps::SetBlock { ino, cnt: -1 });
-                    wb_grp.unset_bitmap(bitmap_lba, ofs, count, fs);
+                    wb_grp.unset_bitmap(bitmap_lba, ofs, count, collector, fs);
                     collector
                         .postludes
                         .borrow_mut()
@@ -176,7 +177,7 @@ impl Events {
                         InodeNumber::from_bgid_index(bgid, ofs as usize, &fs.sb),
                         de,
                     ));
-                    wb_grp.set_bitmap(bitmap_lba, ofs, 1, fs);
+                    wb_grp.set_bitmap(bitmap_lba, ofs, 1, collector, fs);
                 }
                 Event::InodeDeallocationOnBg(InodeDeallocationOnBg {
                     ino,
@@ -189,7 +190,7 @@ impl Events {
                     if matches!(de, FileType::Directory) {
                         wb_grp.bg_delta(bgid).used_dirs_cnt_delta -= 1;
                     }
-                    wb_grp.unset_bitmap(bitmap_lba, ofs, 1, fs);
+                    wb_grp.unset_bitmap(bitmap_lba, ofs, 1, collector, fs);
                     collector
                         .postludes
                         .borrow_mut()
@@ -292,21 +293,20 @@ impl<'a, C: Config, const BLK_SIZE: usize> SbDirtyTracker<'a, C, BLK_SIZE> {
     }
 }
 
-#[derive(Debug)]
 struct WritebackGroup<C: Config, const BLK_SIZE: usize> {
-    new_bitmap: HashMap<LogicalBlockNumber, C::Buffer<BLK_SIZE>>,
     bg_deltas: HashMap<BlockGroupId, BgDelta>,
     sb_delta: Option<SbDelta>,
     inode_ops: Vec<InodeOps>,
+    _ty: core::marker::PhantomData<C>,
 }
 
 impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
     pub fn new() -> Self {
         Self {
-            new_bitmap: HashMap::new(),
             bg_deltas: HashMap::new(),
             sb_delta: None,
             inode_ops: Vec::new(),
+            _ty: core::marker::PhantomData,
         }
     }
 
@@ -323,30 +323,56 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
         bitmap_lba: LogicalBlockNumber,
         ofs: usize,
         count: usize,
+        collector: &Collector,
         fs: &FileSystem<C, BLK_SIZE>,
     ) {
-        // TODO: optimize.
-        let blk = self
-            .new_bitmap
-            .entry(bitmap_lba)
-            .or_insert_with(|| fs.blocks.get(bitmap_lba).unwrap().read().clone());
-
+        // XXX: In-memory state of bitmap is stored as other form, we can directly reflect disk state into fs.blocks.
+        let bref = fs.blocks.get_mut(bitmap_lba, collector).unwrap();
+        let mut blk = bref.write();
         let (os, oe) = (ofs, core::cmp::min((ofs + 7) & !7, ofs + count));
         let (ms, me) = (oe, (ofs + count) & !7);
         let (cs, ce) = (core::cmp::max(oe, me), ofs + count);
         for pos in os..oe {
-            let (grp, ofs) = (pos >> 3, pos & 7);
-            debug_assert_eq!(blk[grp] & (1 << ofs), 0);
-            blk[grp] |= 1 << ofs;
+            let (grp, dofs) = (pos >> 3, pos & 7);
+            debug_assert_eq!(
+                blk[grp] & (1 << dofs),
+                0,
+                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
+                ofs,
+                count,
+                os,
+                oe,
+                ms,
+                me,
+                cs,
+                ce
+            );
+            blk[grp] |= 1 << dofs;
         }
         for grp in ms / 8..me / 8 {
-            debug_assert_eq!(blk[grp], 0);
+            debug_assert_eq!(
+                blk[grp], 0,
+                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
+                ofs, count, os, oe, ms, me, cs, ce
+            );
             blk[grp] = 0xff;
         }
         for pos in cs..ce {
-            let (grp, ofs) = (pos >> 3, pos & 7);
-            debug_assert_eq!(blk[grp] & (1 << ofs), 0);
-            blk[grp] |= 1 << ofs;
+            let (grp, dofs) = (pos >> 3, pos & 7);
+            debug_assert_eq!(
+                blk[grp] & (1 << dofs),
+                0,
+                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
+                ofs,
+                count,
+                os,
+                oe,
+                ms,
+                me,
+                cs,
+                ce
+            );
+            blk[grp] |= 1 << dofs;
         }
     }
     fn unset_bitmap(
@@ -354,28 +380,55 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
         bitmap_lba: LogicalBlockNumber,
         ofs: usize,
         count: usize,
+        collector: &Collector,
         fs: &FileSystem<C, BLK_SIZE>,
     ) {
-        // TODO: optimize.
-        let blk = self
-            .new_bitmap
-            .entry(bitmap_lba)
-            .or_insert_with(|| fs.blocks.get(bitmap_lba).unwrap().read().clone());
+        // XXX: In-memory state of bitmap is stored as other form, we can directly reflect disk state into fs.blocks.
+        let bref = fs.blocks.get_mut(bitmap_lba, collector).unwrap();
+        let mut blk = bref.write();
         let (os, oe) = (ofs, core::cmp::min((ofs + 7) & !7, ofs + count));
         let (ms, me) = (oe, (ofs + count) & !7);
         let (cs, ce) = (core::cmp::max(oe, me), ofs + count);
         for pos in os..oe {
             let (grp, ofs) = (pos >> 3, pos & 7);
-            debug_assert_eq!(blk[grp] & (1 << ofs), 1 << ofs);
+            debug_assert_eq!(
+                blk[grp] & (1 << ofs),
+                1 << ofs,
+                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
+                ofs,
+                count,
+                os,
+                oe,
+                ms,
+                me,
+                cs,
+                ce
+            );
             blk[grp] &= !(1 << ofs);
         }
         for grp in ms / 8..me / 8 {
-            debug_assert_eq!(blk[grp], 0xff);
+            debug_assert_eq!(
+                blk[grp], 0xff,
+                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
+                ofs, count, os, oe, ms, me, cs, ce
+            );
             blk[grp] = 0;
         }
         for pos in cs..ce {
             let (grp, ofs) = (pos >> 3, pos & 7);
-            debug_assert_eq!(blk[grp] & (1 << ofs), 1 << ofs);
+            debug_assert_eq!(
+                blk[grp] & (1 << ofs),
+                1 << ofs,
+                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
+                ofs,
+                count,
+                os,
+                oe,
+                ms,
+                me,
+                cs,
+                ce
+            );
             blk[grp] &= !(1 << ofs);
         }
     }
@@ -387,18 +440,15 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
     ) -> Result<(), FsError> {
         // FIXME: Flush the journal into disk.
         let WritebackGroup {
-            new_bitmap,
             bg_deltas,
             sb_delta,
             inode_ops,
+            ..
         } = self;
 
         // We need to resolve sb first.
         let mut raw_sb = SbDirtyTracker::new(fs);
 
-        for (lba, delta) in new_bitmap.into_iter() {
-            let _ = core::mem::replace(&mut *fs.blocks.get_mut(lba, collector)?.write(), delta);
-        }
         for (bgid, delta) in bg_deltas.into_iter() {
             Self::submit_block_group(fs, bgid, delta, collector)?;
         }
@@ -514,7 +564,11 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
                 let mut guard = raw.write();
                 let mut inode = inode::Manipulator::new(&mut guard[range]);
                 let mut blk = inode.blocks(fs);
-                blk.set(blk.get() + ((BLK_SIZE / 512) * cnt as usize) as u64);
+                blk.set(
+                    blk.get()
+                        .overflowing_add((BLK_SIZE / 512).overflowing_mul(cnt as usize).0 as u64)
+                        .0,
+                );
             }
         }
         Ok(())

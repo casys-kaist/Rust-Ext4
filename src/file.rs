@@ -65,9 +65,11 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
     ) -> Result<(), FsError> {
         let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
         dispatch_cursor_mut!(self.inode, &fs, st, tx, |mut cursor| {
-            for _ in 0..len {
+            for i in 0..len {
                 let lba = cursor.or_allocated(false)?;
-                cursor.move_next()?;
+                if i != len - 1 {
+                    cursor.move_next()?;
+                }
                 f(lba)?;
             }
         });
