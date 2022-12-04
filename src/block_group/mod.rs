@@ -20,9 +20,11 @@ use crate::transaction::Transaction;
 use crate::types::BlockGroupId;
 
 use crate::superblock::{Ext4FeatureReadOnly, SuperBlock};
+use crate::utils::ByteRw;
 use crate::{Config, FileType, FsError, InodeNumber, LogicalBlockNumber};
 use bitflags::bitflags;
 
+use alloc::sync::Arc;
 pub use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 pub(crate) use raw::Manipulator;
 
@@ -37,6 +39,7 @@ bitflags! {
     }
 }
 
+#[derive(Debug)]
 pub struct BlockGroup<const BLK_SIZE: usize> {
     // Readonly
     pub bgid: BlockGroupId,
@@ -129,12 +132,15 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
             .fetch_add(count as u32, Ordering::Release);
     }
 
-    pub fn from_disk<C: Config>(
-        raw: &[u8],
+    pub(crate) fn from_disk<C: Config>(
+        raw: crate::block::BlockRef<C, BLK_SIZE, true>,
+        split: core::ops::Range<usize>,
         bgid: BlockGroupId,
-        fs: &FileSystem<C, BLK_SIZE>,
+        fs: &Arc<FileSystem<C, BLK_SIZE>>,
+        tx: &Transaction,
     ) -> Result<Self, FsError> {
-        let mut manipulator = Manipulator::new(raw);
+        let guard = raw.read();
+        let mut manipulator = Manipulator::new(&guard.as_ref()[split.clone()]);
         let blocks_count = match bgid.0.cmp(&fs.sb.bg_count) {
             core::cmp::Ordering::Less => fs.sb.blocks_per_group,
             core::cmp::Ordering::Equal => {
@@ -144,8 +150,11 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
                 panic!("{:?}", FsError::InvalidFs("bgid > sb.bg_count"))
             }
         };
-
-        BlockGroup {
+        let (flag, csum) = (
+            BlockGroupFlag::from_bits_truncate(manipulator.flags().get()),
+            manipulator.checksum().get(),
+        );
+        let bgroup = BlockGroup {
             bgid,
             inode_table_first_block: LogicalBlockNumber(manipulator.inode_table().get()),
             block_bitmap_lba: LogicalBlockNumber(manipulator.block_bitmap().get()),
@@ -156,15 +165,21 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
             free_inodes_count: AtomicU32::new(manipulator.free_inodes_count().get()),
 
             _itable_unused: AtomicU32::new(manipulator.itable_unused().get()),
-        }
-        .verify(
-            BlockGroupFlag::from_bits_truncate(manipulator.flags().get()),
-            manipulator.checksum().get(),
-        )
+        };
+        drop(guard);
+        bgroup.verify(raw, split, fs, flag, csum, tx)
     }
 
-    pub fn verify(mut self, flags: BlockGroupFlag, _csum: u16) -> Result<Self, FsError> {
-        self.initialize_bg(flags)?;
+    fn verify<C: Config>(
+        mut self,
+        raw: crate::block::BlockRef<C, BLK_SIZE, true>,
+        split: core::ops::Range<usize>,
+        fs: &Arc<FileSystem<C, BLK_SIZE>>,
+        flags: BlockGroupFlag,
+        _csum: u16,
+        tx: &Transaction,
+    ) -> Result<Self, FsError> {
+        self.initialize_bg(raw, split, fs, flags, tx)?;
         Ok(self)
         /*
         if self.free_blocks_count.load(Ordering::Acquire)
@@ -177,7 +192,14 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
         */
     }
 
-    pub fn initialize_bg(&mut self, flags: BlockGroupFlag) -> Result<(), FsError> {
+    fn initialize_bg<C: Config>(
+        &mut self,
+        raw: crate::block::BlockRef<C, BLK_SIZE, true>,
+        split: core::ops::Range<usize>,
+        fs: &Arc<FileSystem<C, BLK_SIZE>>,
+        flags: BlockGroupFlag,
+        tx: &Transaction,
+    ) -> Result<(), FsError> {
         if flags.contains(BlockGroupFlag::BLOCK_UNINIT) {
             todo!()
             /* rc = ext4_fs_init_block_bitmap(ref);
@@ -191,30 +213,21 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
         }
 
         if flags.contains(BlockGroupFlag::INODE_UNINIT) {
-            todo!()
-            /*
-            rc = ext4_fs_init_inode_bitmap(ref);
-            if (rc != EOK) {
-                ext4_block_set(ref->fs->bdev, &ref->block);
-                return rc;
+            let bref = fs
+                .blocks
+                .get_mut_noload(self.inode_bitmap_lba, &tx.collector)?;
+
+            let mut guard = bref.write();
+            ByteRw::new(guard.as_mut()).set_bitmap(fs.sb.inodes_per_group as usize..BLK_SIZE * 8);
+            if !flags.contains(BlockGroupFlag::ITABLE_ZEROED) {
+                todo!()
             }
-
-            ext4_bg_clear_flag(bg, EXT4_BLOCK_GROUP_INODE_UNINIT);
-
-            if (!ext4_bg_has_flag(bg, EXT4_BLOCK_GROUP_ITABLE_ZEROED)) {
-                rc = ext4_fs_init_inode_table(ref);
-                if (rc != EOK) {
-                    ext4_block_set(fs->bdev, &ref->block);
-                    return rc;
-                }
-
-                ext4_bg_set_flag(bg, EXT4_BLOCK_GROUP_ITABLE_ZEROED);
-            }
-
-            ref->dirty = true;
-            */
         }
-        // Apply to disk.
+        if !flags.is_empty() {
+            let mut guard = raw.write();
+            let mut manipulator = Manipulator::new(&mut guard.as_mut()[split]);
+            manipulator.flags().set(BlockGroupFlag::empty().bits());
+        }
         Ok(())
     }
 }

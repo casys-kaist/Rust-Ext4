@@ -63,23 +63,25 @@ pub struct CLimit {
 
 pub struct DirDxNode<
     'l,
+    'j,
     C: Config,
     const BLK_SIZE: usize,
     const ENTRIES: usize,
     const HAS_TAIL: usize,
     const MUT: bool,
 > {
-    _raw: BlockRef<'l, C, BLK_SIZE, MUT>,
+    _raw: BlockRef<'l, 'j, C, BLK_SIZE, MUT>,
 }
 
 impl<
         'l,
+        'j,
         C: Config,
         const BLK_SIZE: usize,
         const ENTRIES: usize,
         const HAS_TAIL: usize,
         const MUT: bool,
-    > DirDxNode<'l, C, BLK_SIZE, ENTRIES, HAS_TAIL, MUT>
+    > DirDxNode<'l, 'j, C, BLK_SIZE, ENTRIES, HAS_TAIL, MUT>
 {
     #[inline]
     fn _fake_len(&self) -> u16 {
@@ -146,6 +148,7 @@ impl<
 
 pub struct DirDxRoot<
     'l,
+    'j,
     C: Config,
     const BLK_SIZE: usize,
     const ENTRIES: usize,
@@ -153,19 +156,20 @@ pub struct DirDxRoot<
     const HAS_TAIL: usize,
     const MUT: bool,
 > {
-    raw: BlockRef<'l, C, BLK_SIZE, MUT>,
+    raw: BlockRef<'l, 'j, C, BLK_SIZE, MUT>,
     hasher: Ext4Hasher,
 }
 
 impl<
         'l,
+        'j,
         C: Config,
         const BLK_SIZE: usize,
         const ENTRIES: usize,
         const N_ENTRIES: usize,
         const HAS_TAIL: usize,
         const IS_MUT: bool,
-    > DirDxRoot<'l, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>
+    > DirDxRoot<'l, 'j, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>
 {
     #[inline]
     pub(crate) fn dot(&self) -> DirDxDotEn {
@@ -296,10 +300,10 @@ impl<
     }
 
     pub(crate) fn from_raw_block(
-        raw: BlockRef<'l, C, BLK_SIZE, IS_MUT>,
+        raw: BlockRef<'l, 'j, C, BLK_SIZE, IS_MUT>,
         fs: &FileSystem<C, BLK_SIZE>,
         inode: &Inode<C, BLK_SIZE>,
-    ) -> Result<DirDxRoot<'l, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>, FsError> {
+    ) -> Result<DirDxRoot<'l, 'j, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>, FsError> {
         let hasher = HashVersion::try_from(ByteRw::new(raw.read().as_ref()).read_u8(0x1C))
             .map_err(|_| FsError::Unsupported("Unsupported Hash"))?
             .get_hasher(
@@ -372,12 +376,13 @@ struct DirEntry<'a> {
 
 impl<
         'l,
+        'j,
         C: Config,
         const BLK_SIZE: usize,
         const ENTRIES: usize,
         const N_ENTRIES: usize,
         const HAS_TAIL: usize,
-    > DirDxRoot<'l, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, true>
+    > DirDxRoot<'l, 'j, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, true>
 {
     pub(crate) fn insert_at(&self, at: usize, entry: DxEntry) -> Result<(), DxEntry> {
         let climit = self.climit();
@@ -407,7 +412,7 @@ impl<
     fn split_data<'a>(
         &self,
         inode: &Inode<C, BLK_SIZE>,
-        mut cursor: HTreeCursor<'a, 'l, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, true>,
+        mut cursor: HTreeCursor<'a, 'l, 'j, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, true>,
         en: DirEntry,
         fs: &FileSystem<C, BLK_SIZE>,
         dx_en: DxEntry,
@@ -616,8 +621,11 @@ impl<
     pub(crate) fn init(
         fs: &'l FileSystem<C, BLK_SIZE>,
         inode: &Inode<C, BLK_SIZE>,
-        tx: &Transaction,
-    ) -> Result<DirDxRoot<'l, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, true>, FsError> {
+        tx: &'j Transaction,
+    ) -> Result<DirDxRoot<'l, 'j, C, BLK_SIZE, ENTRIES, N_ENTRIES, HAS_TAIL, true>, FsError>
+    where
+        'l: 'j,
+    {
         let root_block_addr =
             dispatch_cursor_mut!(inode, fs, FileBlockNumber(0), tx, |mut cursor| {
                 cursor.or_allocated(true)?

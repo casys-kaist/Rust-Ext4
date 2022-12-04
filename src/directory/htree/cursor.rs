@@ -20,6 +20,7 @@ use crate::{Config, FsError};
 pub struct HTreeCursor<
     'a,
     'l,
+    'j,
     C: Config,
     const BLK_SIZE: usize,
     const R_ENTRIES: usize,
@@ -28,11 +29,11 @@ pub struct HTreeCursor<
     const IS_MUT: bool,
 > {
     pub(super) root: (
-        &'a DirDxRoot<'l, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>,
+        &'a DirDxRoot<'l, 'j, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>,
         usize,
     ),
     node: Option<(
-        DirDxNode<'l, C, BLK_SIZE, N_ENTRIES, HAS_TAIL, IS_MUT>,
+        DirDxNode<'l, 'j, C, BLK_SIZE, N_ENTRIES, HAS_TAIL, IS_MUT>,
         usize,
     )>,
     hash: Option<u32>,
@@ -43,16 +44,17 @@ pub struct HTreeCursor<
 impl<
         'a,
         'l,
+        'j,
         C: Config,
         const BLK_SIZE: usize,
         const R_ENTRIES: usize,
         const N_ENTRIES: usize,
         const HAS_TAIL: usize,
         const IS_MUT: bool,
-    > HTreeCursor<'a, 'l, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>
+    > HTreeCursor<'a, 'l, 'j, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>
 {
     pub fn from_index(
-        root: &'a DirDxRoot<'l, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>,
+        root: &'a DirDxRoot<'l, 'j, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>,
         index: usize,
     ) -> Option<Self> {
         if root.root_info().indirect_levels != 0 {
@@ -73,7 +75,7 @@ impl<
     }
 
     pub fn from_hash(
-        root: &'a DirDxRoot<'l, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>,
+        root: &'a DirDxRoot<'l, 'j, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>,
         hash: u32,
     ) -> Result<Self, FsError> {
         let ind_loop = root.root_info().indirect_levels;
@@ -130,12 +132,13 @@ impl<
 impl<
         'a,
         'l,
+        'j,
         C: Config,
         const BLK_SIZE: usize,
         const R_ENTRIES: usize,
         const N_ENTRIES: usize,
         const HAS_TAIL: usize,
-    > HTreeCursor<'a, 'l, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, true>
+    > HTreeCursor<'a, 'l, 'j, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, true>
 {
     pub fn insert(
         &mut self,
@@ -156,6 +159,7 @@ impl<
 impl<
         'a,
         'l,
+        'j,
         C: Config,
         const BLK_SIZE: usize,
         const R_ENTRIES: usize,
@@ -163,7 +167,7 @@ impl<
         const HAS_TAIL: usize,
         const IS_MUT: bool,
     > core::iter::Iterator
-    for HTreeCursor<'a, 'l, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>
+    for HTreeCursor<'a, 'l, 'j, C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, IS_MUT>
 {
     type Item = DxEntry;
 

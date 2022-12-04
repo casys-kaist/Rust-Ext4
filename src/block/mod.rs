@@ -26,13 +26,14 @@ use crate::{
 use alloc::sync::Arc;
 
 pub(crate) type Block<B, D> = RwLock<B, D>;
-pub(crate) struct BlockRef<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> {
+pub(crate) struct BlockRef<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> {
     lba: LogicalBlockNumber,
     inner: Arc<Block<C::Buffer<BLK_SIZE>, C::D>>,
+    collector: Option<&'b Collector>,
     _lt: core::marker::PhantomData<&'a ()>,
 }
 
-impl<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> BlockRef<'a, C, BLK_SIZE, MUT> {
+impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> BlockRef<'a, 'b, C, BLK_SIZE, MUT> {
     #[inline]
     pub fn lba(&self) -> LogicalBlockNumber {
         self.lba
@@ -44,10 +45,40 @@ impl<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> BlockRef<'a, C, BLK_
     }
 }
 
-impl<'a, C: Config, const BLK_SIZE: usize> BlockRef<'a, C, BLK_SIZE, true> {
+impl<'a, 'b, C: Config, const BLK_SIZE: usize> BlockRef<'a, 'b, C, BLK_SIZE, true> {
     #[inline]
-    pub fn write(&self) -> RwLockWriteGuard<C::Buffer<BLK_SIZE>, C::D> {
-        self.inner.write()
+    pub fn write<'c>(&'c self) -> BlockRefWriteGuard<'b, 'c, C, BLK_SIZE> {
+        BlockRefWriteGuard {
+            collector: self.collector.as_ref().cloned(),
+            lba: self.lba,
+            inner: self.inner.write(),
+        }
+    }
+}
+
+pub struct BlockRefWriteGuard<'a, 'b, C: Config, const BLK_SIZE: usize> {
+    collector: Option<&'a Collector>,
+    lba: LogicalBlockNumber,
+    inner: RwLockWriteGuard<'b, C::Buffer<BLK_SIZE>, C::D>,
+}
+
+impl<'a, 'b, C: Config, const BLK_SIZE: usize> core::ops::Deref
+    for BlockRefWriteGuard<'a, 'b, C, BLK_SIZE>
+{
+    type Target = C::Buffer<BLK_SIZE>;
+    fn deref(&self) -> &Self::Target {
+        &*self.inner
+    }
+}
+
+impl<'a, 'b, C: Config, const BLK_SIZE: usize> core::ops::DerefMut
+    for BlockRefWriteGuard<'a, 'b, C, BLK_SIZE>
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        if let Some(collector) = self.collector.take() {
+            collector.track(self.lba);
+        }
+        &mut *self.inner
     }
 }
 
@@ -152,15 +183,16 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         )))
     }
 
-    pub(crate) fn get<'l>(
+    pub(crate) fn get<'l, 'j>(
         &'l self,
         lba: LogicalBlockNumber,
-    ) -> Result<BlockRef<'l, C, BLK_SIZE, false>, FsError> {
+    ) -> Result<BlockRef<'l, 'j, C, BLK_SIZE, false>, FsError> {
         self.blocks
             .get_or_insert_arc(lba, |_| self._read_contents(lba))
             .map(|inner| BlockRef {
                 lba,
                 inner,
+                collector: None,
                 _lt: core::marker::PhantomData,
             })
     }
@@ -170,16 +202,16 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         &'l self,
         lba: LogicalBlockNumber,
         collector: &'j Collector,
-    ) -> Result<BlockRef<'l, C, BLK_SIZE, true>, FsError>
+    ) -> Result<BlockRef<'l, 'j, C, BLK_SIZE, true>, FsError>
     where
         'l: 'j,
     {
-        collector.track(lba);
         self.blocks
             .get_or_insert_arc(lba, |_| self._read_contents(lba))
             .map(|inner| BlockRef {
                 lba,
                 inner,
+                collector: Some(collector),
                 _lt: core::marker::PhantomData,
             })
     }
@@ -189,7 +221,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         &'l self,
         lba: LogicalBlockNumber,
         collector: &'j Collector,
-    ) -> Result<BlockRef<'l, C, BLK_SIZE, true>, FsError>
+    ) -> Result<BlockRef<'l, 'j, C, BLK_SIZE, true>, FsError>
     where
         'l: 'j,
     {
@@ -204,6 +236,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
             .map(|inner| BlockRef {
                 lba,
                 inner,
+                collector: None,
                 _lt: core::marker::PhantomData,
             })
             .unwrap())

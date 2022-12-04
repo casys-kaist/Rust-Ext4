@@ -215,7 +215,10 @@ impl<C: Config> ExtentTree<C> {
         ino: InodeNumber,
         fs: &'b FileSystem<C, BLK_SIZE>,
         tx: &'c Transaction,
-    ) -> Result<CursorMut<'a, 'b, 'c, C, BLK_SIZE>, FsError> {
+    ) -> Result<CursorMut<'a, 'b, 'c, C, BLK_SIZE>, FsError>
+    where
+        'b: 'c,
+    {
         let (path, fba) = {
             let mut path: Path<&mut Self, C, BLK_SIZE, true> = Path::empty(ino, self);
             let fba = path.load_last(tx, fs)?;
@@ -244,12 +247,12 @@ impl<C: Config> ExtentTree<C> {
         }
     }
 
-    pub(crate) fn cursor_from_fba<'a, 'b, const BLK_SIZE: usize>(
+    pub(crate) fn cursor_from_fba<'a, 'b, 'c, const BLK_SIZE: usize>(
         &'a self,
         ino: InodeNumber,
         fs: &'b FileSystem<C, BLK_SIZE>,
         fba: FileBlockNumber,
-    ) -> Result<Cursor<'a, 'b, C, BLK_SIZE>, FsError> {
+    ) -> Result<Cursor<'a, 'b, 'c, C, BLK_SIZE>, FsError> {
         #[cfg(feature = "extent_cache")]
         let path = {
             let last = self.cache.try_read().ok().and_then(|n| n.as_ref().cloned());
@@ -285,7 +288,10 @@ impl<C: Config> ExtentTree<C> {
         fs: &'b FileSystem<C, BLK_SIZE>,
         fba: FileBlockNumber,
         tx: &'c Transaction,
-    ) -> Result<CursorMut<'a, 'b, 'c, C, BLK_SIZE>, FsError> {
+    ) -> Result<CursorMut<'a, 'b, 'c, C, BLK_SIZE>, FsError>
+    where
+        'b: 'c,
+    {
         #[cfg(feature = "extent_cache")]
         let path = {
             let last = self.cache.try_read().ok().and_then(|n| n.as_ref().cloned());
@@ -332,20 +338,20 @@ impl<C: Config> Default for ExtentTree<C> {
     }
 }
 
-pub struct Node<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> {
-    b: BlockRef<'a, C, BLK_SIZE, MUT>,
+pub struct Node<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> {
+    b: BlockRef<'a, 'b, C, BLK_SIZE, MUT>,
 }
 
-impl<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> core::fmt::Debug
-    for Node<'a, C, BLK_SIZE, MUT>
+impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> core::fmt::Debug
+    for Node<'a, 'b, C, BLK_SIZE, MUT>
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Node")
     }
 }
 
-impl<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> Node<'a, C, BLK_SIZE, MUT> {
-    pub(crate) fn from_bytes(b: BlockRef<'a, C, BLK_SIZE, MUT>) -> Result<Self, FsError> {
+impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> Node<'a, 'b, C, BLK_SIZE, MUT> {
+    pub(crate) fn from_bytes(b: BlockRef<'a, 'b, C, BLK_SIZE, MUT>) -> Result<Self, FsError> {
         let magic = {
             let guard = b.read();
             ByteRw::new(guard.as_ref()).read_u16(0)
@@ -360,7 +366,7 @@ impl<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> Node<'a, C, BLK_SIZE
     }
 
     #[inline]
-    fn into_inner(self) -> BlockRef<'a, C, BLK_SIZE, MUT> {
+    fn into_inner(self) -> BlockRef<'a, 'b, C, BLK_SIZE, MUT> {
         self.b
     }
 }
@@ -442,8 +448,8 @@ impl<C: Config> ExtentHeader for ExtentTree<C> {
     }
 }
 
-impl<'a, C: Config, const BLK_SIZE: usize, const MUT: bool> ExtentHeader
-    for Node<'a, C, BLK_SIZE, MUT>
+impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> ExtentHeader
+    for Node<'a, 'b, C, BLK_SIZE, MUT>
 {
     #[inline]
     fn get_entries_cnt(&self) -> u16 {
@@ -519,7 +525,7 @@ impl<C: Config> ExtentHeaderMut for ExtentTree<C> {
     }
 }
 
-impl<'a, C: Config, const BLK_SIZE: usize> ExtentHeaderMut for Node<'a, C, BLK_SIZE, true> {
+impl<'a, 'b, C: Config, const BLK_SIZE: usize> ExtentHeaderMut for Node<'a, 'b, C, BLK_SIZE, true> {
     #[inline]
     fn set_entries_cnt(&mut self, v: u16) {
         let mut guard = self.b.write();
@@ -558,7 +564,7 @@ impl<C: Config> ExtentTree<C> {
     }
 }
 
-impl<'a, C: Config, const BLK_SIZE: usize> Node<'a, C, BLK_SIZE, true> {
+impl<'a, 'b, C: Config, const BLK_SIZE: usize> Node<'a, 'b, C, BLK_SIZE, true> {
     #[inline]
     fn insert_at(&mut self, ext: Entry, at: usize) -> Result<(), Entry> {
         let (max_entries_cnt, entries_cnt, depth) = (

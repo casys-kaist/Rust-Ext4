@@ -20,31 +20,31 @@ use crate::utils::ByteRw;
 use crate::{Config, FileBlockNumber, FsError, InodeNumber, LogicalBlockNumber};
 use alloc::vec::Vec;
 
-pub(super) struct Path<'a, T, C: Config, const BLK_SIZE: usize, const MUT: bool>
+pub(super) struct Path<'a, 'b, T, C: Config, const BLK_SIZE: usize, const MUT: bool>
 where
     T: core::ops::Deref<Target = ExtentTree<C>>,
 {
     ino: InodeNumber,
     pub(super) root: (T, Option<usize>),
-    pub(super) leafs: Vec<(Node<'a, C, BLK_SIZE, MUT>, Option<usize>)>,
+    pub(super) leafs: Vec<(Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)>,
     #[cfg(feature = "extent_cache")]
     pub(super) cache: Option<Leaf>,
 }
 
-enum PathEntry<'a, 'b, T, C: Config, const BLK_SIZE: usize, const MUT: bool>
+enum PathEntry<'a, 'b, 'c, T, C: Config, const BLK_SIZE: usize, const MUT: bool>
 where
     T: core::ops::Deref<Target = ExtentTree<C>>,
 {
     Root(&'b (T, Option<usize>)),
-    Leaf(&'b (Node<'a, C, BLK_SIZE, MUT>, Option<usize>)),
+    Leaf(&'b (Node<'a, 'c, C, BLK_SIZE, MUT>, Option<usize>)),
 }
 
-pub(super) enum PathEntryMut<'a, 'b, T, C: Config, const BLK_SIZE: usize, const MUT: bool>
+pub(super) enum PathEntryMut<'a, 'b, 'c, T, C: Config, const BLK_SIZE: usize, const MUT: bool>
 where
     T: core::ops::Deref<Target = ExtentTree<C>>,
 {
     Root(&'b mut (T, Option<usize>)),
-    Leaf(&'b mut (Node<'a, C, BLK_SIZE, MUT>, Option<usize>)),
+    Leaf(&'b mut (Node<'a, 'c, C, BLK_SIZE, MUT>, Option<usize>)),
 }
 
 macro_rules! dispatch_entry {
@@ -65,7 +65,7 @@ macro_rules! dispatch_entry_mut {
     };
 }
 
-impl<'a, T, C: Config, const BLK_SIZE: usize, const MUT: bool> Path<'a, T, C, BLK_SIZE, MUT>
+impl<'a, 'b, T, C: Config, const BLK_SIZE: usize, const MUT: bool> Path<'a, 'b, T, C, BLK_SIZE, MUT>
 where
     T: core::ops::Deref<Target = ExtentTree<C>>,
 {
@@ -87,7 +87,7 @@ where
     }
 
     #[inline]
-    fn get<'b>(&'b self, at: usize) -> Option<PathEntry<'a, 'b, T, C, BLK_SIZE, MUT>> {
+    fn get<'c>(&'c self, at: usize) -> Option<PathEntry<'a, 'c, 'b, T, C, BLK_SIZE, MUT>> {
         if at == 0 {
             Some(PathEntry::Root(&self.root))
         } else {
@@ -96,7 +96,10 @@ where
     }
 
     #[inline]
-    fn get_mut<'b>(&'b mut self, at: usize) -> Option<PathEntryMut<'a, 'b, T, C, BLK_SIZE, MUT>> {
+    fn get_mut<'c>(
+        &'c mut self,
+        at: usize,
+    ) -> Option<PathEntryMut<'a, 'c, 'b, T, C, BLK_SIZE, MUT>> {
         if at == 0 {
             Some(PathEntryMut::Root(&mut self.root))
         } else {
@@ -105,12 +108,12 @@ where
     }
 
     #[inline]
-    fn last<'b>(&'b self) -> PathEntry<'a, 'b, T, C, BLK_SIZE, MUT> {
+    fn last<'c>(&'c self) -> PathEntry<'a, 'c, 'b, T, C, BLK_SIZE, MUT> {
         self.get(self.len() - 1).unwrap()
     }
 
     #[inline]
-    pub(super) fn last_mut<'b>(&'b mut self) -> PathEntryMut<'a, 'b, T, C, BLK_SIZE, MUT> {
+    pub(super) fn last_mut<'c>(&'c mut self) -> PathEntryMut<'a, 'c, 'b, T, C, BLK_SIZE, MUT> {
         self.get_mut(self.len() - 1).unwrap()
     }
 
@@ -136,7 +139,7 @@ where
     }
 }
 
-impl<'a, T, C: Config, const BLK_SIZE: usize> Path<'a, T, C, BLK_SIZE, false>
+impl<'a, 'b, T, C: Config, const BLK_SIZE: usize> Path<'a, 'b, T, C, BLK_SIZE, false>
 where
     T: core::ops::Deref<Target = ExtentTree<C>>,
 {
@@ -169,7 +172,10 @@ where
     }
 }
 
-impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_SIZE, true> {
+impl<'a, 'b, C: Config, const BLK_SIZE: usize> Path<'a, 'b, &mut ExtentTree<C>, C, BLK_SIZE, true>
+where
+    'a: 'b,
+{
     /*
     fn move_back<IO, S>(
         &mut self,
@@ -212,7 +218,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
     pub fn load(
         &mut self,
         fba: FileBlockNumber,
-        tx: &Transaction,
+        tx: &'b Transaction,
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<(), FsError> {
         let Self { root, leafs, .. } = self;
@@ -240,7 +246,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
 
     pub fn load_last(
         &mut self,
-        tx: &Transaction,
+        tx: &'b Transaction,
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<Option<FileBlockNumber>, FsError> {
         let Self { root, leafs, .. } = self;
@@ -412,16 +418,13 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
         })
     }
 
-    fn split_at<'l, 'j>(
+    fn split_at(
         &mut self,
         new: &Leaf,
         at: usize,
-        tx: &'j Transaction,
-        fs: &'l FileSystem<C, BLK_SIZE>,
-    ) -> Result<(bool, Vec<BlockRef<'l, C, BLK_SIZE, true>>), FsError>
-    where
-        'l: 'j,
-    {
+        tx: &'b Transaction,
+        fs: &'a FileSystem<C, BLK_SIZE>,
+    ) -> Result<(bool, Vec<BlockRef<'a, 'b, C, BLK_SIZE, true>>), FsError> {
         let insert_idx = dispatch_entry!(self.last(), |en, idx| {
             if *idx == Some(en.get_max_entries_cnt() as usize - 1) {
                 new.block
@@ -491,7 +494,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
         &mut self,
         mut new: Leaf,
         ino: InodeNumber,
-        tx: &Transaction,
+        tx: &'b Transaction,
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<Option<Leaf>, FsError> {
         loop {
@@ -538,7 +541,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
         &mut self,
         mut leaf: Leaf,
         ino: InodeNumber,
-        tx: &Transaction,
+        tx: &'b Transaction,
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<LogicalBlockNumber, FsError> {
         let (lba, fba) = (leaf.start, leaf.block);
@@ -552,7 +555,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
 
     pub fn load_path_to_last(
         &mut self,
-        tx: &Transaction,
+        tx: &'b Transaction,
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<(), FsError> {
         let Self { root, leafs, .. } = self;
@@ -583,7 +586,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
     pub(super) fn truncate_last(
         &mut self,
         new_len: u16,
-        tx: &Transaction,
+        tx: &'b Transaction,
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<(), FsError> {
         let leaf = self.get_leaf().unwrap();
@@ -621,7 +624,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> Path<'a, &mut ExtentTree<C>, C, BLK_S
 
     fn move_prev_with_cleanup(
         &mut self,
-        tx: &Transaction,
+        tx: &'b Transaction,
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<(), FsError> {
         let orig_len = self.len() as u16;

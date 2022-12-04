@@ -19,14 +19,14 @@ use crate::transaction::Transaction;
 use crate::{Config, FileBlockNumber, FsError, InodeNumber, LogicalBlockNumber};
 use core::convert::TryInto;
 
-pub(crate) struct Cursor<'a, 'b, C: Config, const BLK_SIZE: usize> {
+pub(crate) struct Cursor<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> {
     pub(super) fba: FileBlockNumber,
-    pub(super) path: Path<'b, &'a ExtentTree<C>, C, BLK_SIZE, false>,
+    pub(super) path: Path<'b, 'c, &'a ExtentTree<C>, C, BLK_SIZE, false>,
     pub(super) fs: &'b FileSystem<C, BLK_SIZE>,
     pub _error: Option<FsError>,
 }
 
-impl<'a, 'b, C: Config, const BLK_SIZE: usize> Cursor<'a, 'b, C, BLK_SIZE> {
+impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> Cursor<'a, 'b, 'c, C, BLK_SIZE> {
     // Get the logical block number pointed by the cursor.
     #[inline]
     pub(crate) fn current(&mut self) -> Option<AddressingOutput> {
@@ -62,8 +62,8 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> Cursor<'a, 'b, C, BLK_SIZE> {
     }
 }
 
-impl<'a, 'b, C: Config, const BLK_SIZE: usize> core::iter::Iterator
-    for Cursor<'a, 'b, C, BLK_SIZE>
+impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> core::iter::Iterator
+    for Cursor<'a, 'b, 'c, C, BLK_SIZE>
 {
     type Item = AddressingOutput;
 
@@ -83,13 +83,16 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> core::iter::Iterator
 pub(crate) struct CursorMut<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> {
     pub(super) fba: FileBlockNumber,
     pub(super) ino: InodeNumber,
-    pub(super) path: Path<'b, &'a mut ExtentTree<C>, C, BLK_SIZE, true>,
+    pub(super) path: Path<'b, 'c, &'a mut ExtentTree<C>, C, BLK_SIZE, true>,
     pub(super) fs: &'b FileSystem<C, BLK_SIZE>,
     pub(super) tx: &'c Transaction,
     pub _error: Option<FsError>,
 }
 
-impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> CursorMut<'a, 'b, 'c, C, BLK_SIZE> {
+impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> CursorMut<'a, 'b, 'c, C, BLK_SIZE>
+where
+    'b: 'c,
+{
     #[inline]
     pub fn fba(&self) -> FileBlockNumber {
         self.fba
@@ -219,6 +222,8 @@ impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> CursorMut<'a, 'b, 'c, C, BLK_
 
 impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> core::iter::Iterator
     for CursorMut<'a, 'b, 'c, C, BLK_SIZE>
+where
+    'b: 'c,
 {
     type Item = AddressingOutput;
 
@@ -234,7 +239,7 @@ impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> core::iter::Iterator
     }
 }
 
-impl<'a, 'b, C: Config, const BLK_SIZE: usize> Drop for Cursor<'a, 'b, C, BLK_SIZE> {
+impl<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> Drop for Cursor<'a, 'b, 'c, C, BLK_SIZE> {
     fn drop(&mut self) {
         #[cfg(feature = "extent_cache")]
         if let Some(leaf) = self.path.get_leaf() {

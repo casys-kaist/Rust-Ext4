@@ -179,6 +179,7 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
                     // As dot point itself, we must dec link twice.
                     guard.links_count -= 1;
                     tx.inode_rm_link(ino);
+                    tx.inode_rm_link(self.inode.ino);
                 }
                 (0, _) | (_, FileType::Directory) => {
                     // Hardlink is not permitted on directory.

@@ -71,7 +71,7 @@ impl Collector {
         } = self;
 
         if is_sb_dirty.load(core::sync::atomic::Ordering::Relaxed) {
-            fs.sb.manipulator.lock().writeback(&fs.blocks.conf)?
+            fs.sb.manipulator.lock().writeback(&fs.blocks.conf)?;
         }
         let l = modifications.into_inner();
         let mut bio = alloc::vec::Vec::with_capacity(l.len());

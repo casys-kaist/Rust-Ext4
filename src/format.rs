@@ -131,18 +131,6 @@ fn make_sb<C: Config, const BLK_SIZE: usize>(
     SuperBlock::from_raw(sb).unwrap()
 }
 
-fn set_bitmap<T>(bitmap: &mut ByteRw<T>, pos: impl core::iter::Iterator<Item = usize>)
-where
-    T: core::convert::AsRef<[u8]>,
-    T: core::convert::AsMut<[u8]>,
-{
-    for p in pos {
-        let (group, ofs) = (p >> 3, p & 7);
-        let v = bitmap.read_u8(group) | (1 << ofs);
-        bitmap.write_u8(group, v);
-    }
-}
-
 fn fill_bg<C: Config, const BLK_SIZE: usize>(
     dev: &C,
     sb: &mut SuperBlock<C, BLK_SIZE>,
@@ -192,15 +180,12 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
                     .as_mut(),
             );
             if bgid.0 == 0 {
-                set_bitmap(&mut inode_bitmap, 0..1);
-                set_bitmap(&mut inode_bitmap, 2..10);
+                inode_bitmap.set_bitmap(0..1);
+                inode_bitmap.set_bitmap(2..10);
                 free_inodes -= 9;
             }
             // Set end of inode bitmap. kill 1) unusable 2) padding.
-            set_bitmap(
-                &mut inode_bitmap,
-                sb.inodes_per_group as usize..BLK_SIZE * 8,
-            );
+            inode_bitmap.set_bitmap(sb.inodes_per_group as usize..BLK_SIZE * 8);
         }
         // Fill block bitmap
         {
@@ -211,10 +196,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
                     .as_mut(),
             );
             if sb.is_super_in_bg(bgid) {
-                set_bitmap(
-                    &mut block_bitmap,
-                    0..1 + sb.first_data_block as usize + desc_blocks as usize,
-                );
+                block_bitmap.set_bitmap(0..1 + sb.first_data_block as usize + desc_blocks as usize);
                 // write backup superblock.
                 if bgid.0 != 0 {
                     let ofs = BLK_SIZE
@@ -224,20 +206,13 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
                 }
             }
             // Set block bitmap, inode bitmap, inode table as used block.
-            set_bitmap(
-                &mut block_bitmap,
+            block_bitmap.set_bitmap(
                 (start_block - block_base) as usize + 1
                     ..=(start_block - block_base) as usize + 2 + inode_blocks as usize,
             );
             // Set end of block bitmap. kill 1) unusable 2) padding.
-            set_bitmap(
-                &mut block_bitmap,
-                block_bitmap_pad_back..sb.blocks_per_group as usize,
-            );
-            set_bitmap(
-                &mut block_bitmap,
-                sb.blocks_per_group as usize..BLK_SIZE * 8,
-            );
+            block_bitmap.set_bitmap(block_bitmap_pad_back..sb.blocks_per_group as usize);
+            block_bitmap.set_bitmap(sb.blocks_per_group as usize..BLK_SIZE * 8);
         }
         // zero out the inode table
         for lba in (start_block + 3..start_block + 3 + inode_blocks as u64).map(LogicalBlockNumber)

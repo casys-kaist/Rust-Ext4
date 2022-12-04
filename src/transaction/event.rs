@@ -251,7 +251,10 @@ fn get_inode<'a, 'b, C: Config + 'a, const BLK_SIZE: usize>(
     fs: &'a FileSystem<C, BLK_SIZE>,
     ino: InodeNumber,
     collector: &'b Collector,
-) -> Result<(BlockRef<'a, C, BLK_SIZE, true>, core::ops::Range<usize>), FsError> {
+) -> Result<(BlockRef<'a, 'b, C, BLK_SIZE, true>, core::ops::Range<usize>), FsError>
+where
+    'a: 'b,
+{
     let inode_size = fs.sb.inode_size;
     let (block_group, index_in_grp) = ino.into_bgid_index(&fs.sb);
     let byte_offset_in_group = index_in_grp as u64 * inode_size as u64;

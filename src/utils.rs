@@ -80,6 +80,15 @@ where
     pub fn inner_mut(&mut self) -> &mut T {
         &mut self.b
     }
+
+    #[inline]
+    pub fn set_bitmap(&mut self, pos: impl core::iter::Iterator<Item = usize>) {
+        for p in pos {
+            let (group, ofs) = (p >> 3, p & 7);
+            let v = self.read_u8(group) | (1 << ofs);
+            self.write_u8(group, v);
+        }
+    }
 }
 
 pub(crate) struct Accessor<'a, T, O, const ADDR: usize>
