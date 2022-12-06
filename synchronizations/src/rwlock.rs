@@ -133,6 +133,28 @@ where
     _h: D::HookAux,
 }
 
+impl<'a, T, D> RwLockReadGuard<'a, T, D>
+where
+    T: ?Sized + Send,
+    T: 'a,
+    D: Dreamer,
+{
+    pub fn upgrade(self) -> RwLockWriteGuard<'a, T, D> {
+        todo!()
+    }
+}
+
+impl<'a, T, D> RwLockWriteGuard<'a, T, D>
+where
+    T: ?Sized + Send,
+    T: 'a,
+    D: Dreamer,
+{
+    pub fn downgrade(self) -> RwLockReadGuard<'a, T, D> {
+        todo!()
+    }
+}
+
 impl<T, D> RwLock<T, D>
 where
     T: Send,
