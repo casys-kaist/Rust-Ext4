@@ -90,7 +90,7 @@ pub fn is_write_locked(b: usize) -> bool {
 
 #[inline]
 pub fn is_read_locked(b: usize) -> bool {
-    b > 0
+    b > 0 && !is_write_locked(b)
 }
 
 /// RAII structure used to release the exclusive write access of a lock when
@@ -131,6 +131,62 @@ where
     lock: &'a RwLock<T, D>,
     data: &'a T,
     _h: D::HookAux,
+}
+
+impl<'a, T, D> RwLockReadGuard<'a, T, D>
+where
+    T: ?Sized + Send,
+    T: 'a,
+    D: Dreamer,
+{
+    pub fn upgrade(self) -> RwLockWriteGuard<'a, T, D> {
+        let this = core::mem::ManuallyDrop::new(self);
+        let _h = unsafe { core::ptr::read(&this._h) };
+        let lock = unsafe { core::ptr::read(&this.lock) };
+        loop {
+            if lock
+                .state
+                .compare_exchange(1, STATE_WRITER_LOCKED, Ordering::Acquire, Ordering::Acquire)
+                .is_ok()
+            {
+                lock.dreamer
+                    .release_hook(Hint::Read, core::panic::Location::caller());
+                lock.dreamer
+                    .acquire_hook(Hint::Write, core::panic::Location::caller());
+                break RwLockWriteGuard {
+                    lock,
+                    data: unsafe { &mut *lock.data.get() },
+                    _h,
+                };
+            }
+        }
+    }
+}
+
+impl<'a, T, D> RwLockWriteGuard<'a, T, D>
+where
+    T: ?Sized + Send,
+    T: 'a,
+    D: Dreamer,
+{
+    pub fn downgrade(self) -> RwLockReadGuard<'a, T, D> {
+        let this = core::mem::ManuallyDrop::new(self);
+        let _h = unsafe { core::ptr::read(&this._h) };
+        let lock = unsafe { core::ptr::read(&this.lock) };
+        assert!(lock
+            .state
+            .compare_exchange(STATE_WRITER_LOCKED, 1, Ordering::Acquire, Ordering::Acquire)
+            .is_ok());
+        lock.dreamer
+            .release_hook(Hint::Write, core::panic::Location::caller());
+        lock.dreamer
+            .acquire_hook(Hint::Read, core::panic::Location::caller());
+        RwLockReadGuard {
+            lock,
+            data: unsafe { &*lock.data.get() },
+            _h,
+        }
+    }
 }
 
 impl<T, D> RwLock<T, D>
@@ -251,12 +307,7 @@ where
                 self.dreamer.sleeping(&self.state, Hint::Write);
             } else if self
                 .state
-                .compare_exchange(
-                    prev,
-                    prev | STATE_WRITER_LOCKED,
-                    Ordering::Acquire,
-                    Ordering::Acquire,
-                )
+                .compare_exchange(0, STATE_WRITER_LOCKED, Ordering::Acquire, Ordering::Acquire)
                 .is_ok()
             {
                 break h;
