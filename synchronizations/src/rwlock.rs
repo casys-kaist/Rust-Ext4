@@ -303,7 +303,7 @@ where
         loop {
             let h = self.dreamer.prehook();
             let prev = self.state.load(Ordering::Relaxed);
-            if is_read_locked(prev) {
+            if prev > 0 {
                 self.dreamer.sleeping(&self.state, Hint::Write);
             } else if self
                 .state
@@ -356,7 +356,7 @@ where
         loop {
             let h = self.dreamer.prehook();
             let prev = self.state.load(Ordering::Relaxed);
-            if is_read_locked(prev) {
+            if prev > 0 {
                 break Err(crate::WouldBlock);
             } else if self
                 .state
