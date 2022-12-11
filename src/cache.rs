@@ -79,7 +79,7 @@ where
     }
 
     #[inline]
-    pub fn _flush(&self) {
+    pub fn flush(&self) {
         *self.inner.write() = HashMap::new();
     }
 }

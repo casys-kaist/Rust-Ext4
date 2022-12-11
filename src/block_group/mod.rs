@@ -171,7 +171,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
     }
 
     fn verify<C: Config>(
-        mut self,
+        self,
         raw: crate::block::BlockRef<C, BLK_SIZE, true>,
         split: core::ops::Range<usize>,
         fs: &Arc<FileSystem<C, BLK_SIZE>>,
@@ -179,37 +179,32 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
         _csum: u16,
         tx: &Transaction,
     ) -> Result<Self, FsError> {
-        self.initialize_bg(raw, split, fs, flags, tx)?;
-        Ok(self)
-        /*
-        if self.free_blocks_count.load(Ordering::Acquire)
-            == self.blocks_count - self.block_bitmap.count_used()
-        {
-            Ok(self)
-        } else {
-            Err(FsError::InvalidFs("Bg is corrupted"))
-        }
-        */
-    }
+        let desc_blocks =
+            ((fs.sb.block_desc_size * fs.sb.bg_count as usize + BLK_SIZE - 1) / BLK_SIZE) as u64;
+        let inode_blocks =
+            (((fs.sb.inodes_per_group as usize) * (fs.sb.inode_size as usize) + BLK_SIZE - 1)
+                / BLK_SIZE) as u64;
 
-    fn initialize_bg<C: Config>(
-        &mut self,
-        raw: crate::block::BlockRef<C, BLK_SIZE, true>,
-        split: core::ops::Range<usize>,
-        fs: &Arc<FileSystem<C, BLK_SIZE>>,
-        flags: BlockGroupFlag,
-        tx: &Transaction,
-    ) -> Result<(), FsError> {
         if flags.contains(BlockGroupFlag::BLOCK_UNINIT) {
-            todo!()
-            /* rc = ext4_fs_init_block_bitmap(ref);
-                if (rc != EOK) {
-                    ext4_block_set(fs->bdev, &ref->block);
-                    return rc;
-                }
-                ext4_bg_clear_flag(bg, EXT4_BLOCK_GROUP_BLOCK_UNINIT);
-                ref->dirty = true;
-            */
+            let bref = fs
+                .blocks
+                .get_mut_noload(self.block_bitmap_lba, &tx.collector)?;
+            let mut guard = bref.write();
+            let mut block_bitmap = ByteRw::new(guard.as_mut());
+            let mut base = (fs.sb.first_data_block as u64 + desc_blocks) as usize + 1;
+            if fs.sb.is_super_in_bg(self.bgid) {
+                base += 1;
+                block_bitmap
+                    .set_bitmap(0..1 + fs.sb.first_data_block as usize + desc_blocks as usize);
+            }
+            // Set block bitmap, inode bitmap, inode table as used block.
+            block_bitmap.set_bitmap(base..=base + 1 + inode_blocks as usize);
+            let block_bitmap_pad_back = ((self.bgid.0 + 1) as usize
+                * fs.sb.blocks_per_group as usize)
+                .saturating_sub(fs.sb.blocks_count as usize);
+            // Set end of block bitmap. kill 1) unusable 2) padding.
+            block_bitmap
+                .set_bitmap(fs.sb.blocks_per_group as usize - block_bitmap_pad_back..BLK_SIZE * 8);
         }
 
         if flags.contains(BlockGroupFlag::INODE_UNINIT) {
@@ -220,14 +215,30 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
             let mut guard = bref.write();
             ByteRw::new(guard.as_mut()).set_bitmap(fs.sb.inodes_per_group as usize..BLK_SIZE * 8);
             if !flags.contains(BlockGroupFlag::ITABLE_ZEROED) {
-                todo!()
+                for lba in (self.inode_table_first_block.0
+                    ..self.inode_table_first_block.0 + inode_blocks)
+                    .map(LogicalBlockNumber)
+                {
+                    let _ = fs.blocks.get_mut_noload(lba, &tx.collector)?;
+                }
             }
         }
         if !flags.is_empty() {
             let mut guard = raw.write();
             let mut manipulator = Manipulator::new(&mut guard.as_mut()[split]);
             manipulator.flags().set(BlockGroupFlag::empty().bits());
+            let csum = BlockGroup::calculate_csum(self.bgid, &mut manipulator, &fs.sb);
+            manipulator.checksum().set(csum);
         }
-        Ok(())
+        Ok(self)
+        /*
+        if self.free_blocks_count.load(Ordering::Acquire)
+            == self.blocks_count - self.block_bitmap.count_used()
+        {
+            Ok(self)
+        } else {
+            Err(FsError::InvalidFs("Bg is corrupted"))
+        }
+        */
     }
 }

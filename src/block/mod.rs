@@ -84,7 +84,7 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> core::ops::DerefMut
 
 pub struct Manager<C: Config, const BLK_SIZE: usize> {
     pub(crate) allocator: allocator::Allocator<C::S>,
-    blocks: Cache<LogicalBlockNumber, Block<C::Buffer<BLK_SIZE>, C::D>, C::D>,
+    pub(crate) blocks: Cache<LogicalBlockNumber, Block<C::Buffer<BLK_SIZE>, C::D>, C::D>,
     pub(crate) conf: C,
 }
 

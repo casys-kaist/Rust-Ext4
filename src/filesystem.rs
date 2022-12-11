@@ -39,11 +39,15 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
     pub fn conf(&self) -> &C {
         &self.blocks.conf
     }
+    #[inline]
+    pub fn conf_mut(&mut self) -> &mut C {
+        &mut self.blocks.conf
+    }
 
     fn make_fs_ctxt(mut self: Arc<Self>) -> Result<Arc<Self>, FsError> {
         let mut bgs = Vec::with_capacity(self.sb.bg_count as usize);
-        let tx = self.open_transaction();
         for bgid in (0..self.sb.bg_count).map(BlockGroupId) {
+            let tx = self.open_transaction();
             let (lba, index) = bgid.into_lba_index(&self.sb);
             let bg_arr = self.blocks.get_mut(lba, &tx.collector)?;
             bgs.push(BlockGroup::from_disk(
@@ -53,6 +57,9 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
                 &self,
                 &tx,
             )?);
+            tx.done(&self)?;
+            // We don't need to hold blockgroup blocks, as they are loaded on memory.
+            self.blocks.blocks.flush();
         }
         {
             let Self {
@@ -64,7 +71,6 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
             *block_groups = bgs;
             inodes.load_bitmap(block_groups, blocks)?;
         }
-        tx.done(&self)?;
 
         self.blocks.build_buddy(&self)?;
         Ok(self)

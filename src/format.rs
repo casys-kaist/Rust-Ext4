@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::block_group;
+use crate::block_group::{self, BlockGroup, BlockGroupFlag};
 use crate::inode::Inode;
 use crate::superblock::{
     self, Ext4FeatureCompatible, Ext4FeatureIncompatible, Ext4FeatureReadOnly, SuperBlock,
@@ -171,24 +171,32 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             core::cmp::min(total_blocks as usize, sb.blocks_per_group as usize);
 
         total_blocks = total_blocks.saturating_sub(sb.blocks_per_group as u64);
-        // Fill inode bitmap
-        {
+        // if bgid is zero, init inode table and bitmap.
+        // Otherwise, initialize lazily.
+        if bgid.0 == 0 {
+            // Fill inode bitmap
             let mut inode_bitmap = ByteRw::new(
                 block_map
                     .entry(LogicalBlockNumber(start_block + 2))
                     .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed())
                     .as_mut(),
             );
-            if bgid.0 == 0 {
-                inode_bitmap.set_bitmap(0..1);
-                inode_bitmap.set_bitmap(2..10);
-                free_inodes -= 9;
-            }
+            inode_bitmap.set_bitmap(0..1);
+            inode_bitmap.set_bitmap(2..10);
+            free_inodes -= 9;
             // Set end of inode bitmap. kill 1) unusable 2) padding.
             inode_bitmap.set_bitmap(sb.inodes_per_group as usize..BLK_SIZE * 8);
-        }
-        // Fill block bitmap
-        {
+
+            // zero out the inode table
+            for lba in
+                (start_block + 3..start_block + 3 + inode_blocks as u64).map(LogicalBlockNumber)
+            {
+                block_map
+                    .entry(lba)
+                    .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed());
+            }
+
+            // Fill block bitmap
             let mut block_bitmap = ByteRw::new(
                 block_map
                     .entry(LogicalBlockNumber(start_block + 1))
@@ -197,13 +205,6 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             );
             if sb.is_super_in_bg(bgid) {
                 block_bitmap.set_bitmap(0..1 + sb.first_data_block as usize + desc_blocks as usize);
-                // write backup superblock.
-                if bgid.0 != 0 {
-                    let ofs = BLK_SIZE
-                        * (sb.first_data_block as usize
-                            + bgid.0 as usize * sb.blocks_per_group as usize);
-                    dev.write_bytes(ofs, &sb_manipulator.rw.inner().0)?;
-                }
             }
             // Set block bitmap, inode bitmap, inode table as used block.
             block_bitmap.set_bitmap(
@@ -211,16 +212,16 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
                     ..=(start_block - block_base) as usize + 2 + inode_blocks as usize,
             );
             // Set end of block bitmap. kill 1) unusable 2) padding.
-            block_bitmap.set_bitmap(block_bitmap_pad_back..sb.blocks_per_group as usize);
-            block_bitmap.set_bitmap(sb.blocks_per_group as usize..BLK_SIZE * 8);
+            block_bitmap.set_bitmap(block_bitmap_pad_back..BLK_SIZE * 8);
         }
-        // zero out the inode table
-        for lba in (start_block + 3..start_block + 3 + inode_blocks as u64).map(LogicalBlockNumber)
-        {
-            block_map
-                .entry(lba)
-                .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed());
+
+        // Fill backup sb
+        if sb.is_super_in_bg(bgid) && bgid.0 != 0 {
+            let ofs = BLK_SIZE
+                * (sb.first_data_block as usize + bgid.0 as usize * sb.blocks_per_group as usize);
+            dev.write_bytes(ofs, &sb_manipulator.rw.inner().0)?;
         }
+
         // Fill bg meta
         {
             let mut bg = block_group::Manipulator::new(
@@ -236,12 +237,14 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             bg.free_blocks_count().set(free_blocks);
             bg.free_inodes_count().set(free_inodes);
             bg.used_dirs_count().set(0);
-            bg.flags().set(0);
+            if bgid.0 != 0 {
+                bg.flags()
+                    .set((BlockGroupFlag::INODE_UNINIT | BlockGroupFlag::BLOCK_UNINIT).bits());
+            }
 
-            let csum = block_group::BlockGroup::calculate_csum(bgid, &mut bg, sb);
+            let csum = BlockGroup::calculate_csum(bgid, &mut bg, sb);
             bg.checksum().set(csum);
         }
-        sb.blocks_count += free_blocks as u64;
 
         let blocks_cnt = sb_manipulator.free_blocks_count().get();
         sb_manipulator
@@ -319,6 +322,7 @@ mod tests {
     fn run(path: std::path::PathBuf) -> bool {
         let r = test_oracle(path.as_path());
         let _ = std::fs::remove_file(path);
+        println!("next");
         r
     }
 

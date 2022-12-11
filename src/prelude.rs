@@ -218,22 +218,10 @@ pub use synchronizations::ticket_lock::{Dreamer, TicketLock, TicketLockGuard};
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::format;
-    use crate::FsBlkSizeDispatch;
     use rand::distributions::{Alphanumeric, Distribution};
     use rand::{thread_rng, Rng};
     use std::fs::OpenOptions;
     use std::path::PathBuf;
-
-    #[macro_export]
-    macro_rules! dispatch_fs {
-        ($self_:expr, |$t:ident| $code:expr) => {{
-            match $self_ {
-                $crate::FsBlkSizeDispatch::Blk1024($t) => $code,
-                $crate::FsBlkSizeDispatch::Blk2048($t) => $code,
-                $crate::FsBlkSizeDispatch::Blk4096($t) => $code,
-            }
-        }};
-    }
 
     struct UpperHex;
 
@@ -333,7 +321,10 @@ pub(crate) mod tests {
         disk
     }
 
-    pub(crate) fn run_test(action: impl FnOnce(FsBlkSizeDispatch<std::fs::File>), size_in_mi: u64) {
+    pub(crate) fn run_test(
+        action: impl FnOnce(alloc::sync::Arc<crate::FileSystem<std::fs::File, 4096>>),
+        size_in_mi: u64,
+    ) {
         const M: u64 = 1024 * 1024;
 
         let disk = make_disk(4096, size_in_mi * M);

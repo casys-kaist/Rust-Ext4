@@ -247,15 +247,13 @@ mod tests {
     fn make_regular_file() {
         run_test(
             |fs| {
-                crate::dispatch_fs!(fs, |fs| {
-                    let tx = fs.open_transaction();
-                    let _ = fs
-                        .root()
-                        .unwrap()
-                        .create_entry("test", FileType::RegularFile, &tx)
-                        .expect("Failed to create `/test`");
-                    tx.done(&fs).unwrap();
-                })
+                let tx = fs.open_transaction();
+                let _ = fs
+                    .root()
+                    .unwrap()
+                    .create_entry("test", FileType::RegularFile, &tx)
+                    .expect("Failed to create `/test`");
+                tx.done(&fs).unwrap();
             },
             100,
         );
@@ -265,22 +263,20 @@ mod tests {
     fn make_regular_file_many() {
         run_test(
             |fs| {
-                crate::dispatch_fs!(fs, |fs| {
-                    let tx = fs.open_transaction();
-                    for i in 0..4096 {
-                        let mut path = String::from("test");
-                        path.extend(i.to_string().chars());
+                let tx = fs.open_transaction();
+                for i in 0..4096 {
+                    let mut path = String::from("test");
+                    path.extend(i.to_string().chars());
 
-                        let _ = fs
-                            .root()
-                            .unwrap()
-                            .create_entry(&path, FileType::RegularFile, &tx)
-                            .unwrap_or_else(|err| {
-                                panic!("Failed to create `{:?}`. reason: {:?}", path, err)
-                            });
-                    }
-                    tx.done(&fs).unwrap();
-                })
+                    let _ = fs
+                        .root()
+                        .unwrap()
+                        .create_entry(&path, FileType::RegularFile, &tx)
+                        .unwrap_or_else(|err| {
+                            panic!("Failed to create `{:?}`. reason: {:?}", path, err)
+                        });
+                }
+                tx.done(&fs).unwrap();
             },
             100,
         );
@@ -290,15 +286,13 @@ mod tests {
     fn make_directory() {
         run_test(
             |fs| {
-                crate::dispatch_fs!(fs, |fs| {
-                    let tx = fs.open_transaction();
-                    let _ = fs
-                        .root()
-                        .unwrap()
-                        .create_entry("test", FileType::Directory, &tx)
-                        .expect("Failed to create `/test`");
-                    tx.done(&fs).unwrap();
-                })
+                let tx = fs.open_transaction();
+                let _ = fs
+                    .root()
+                    .unwrap()
+                    .create_entry("test", FileType::Directory, &tx)
+                    .expect("Failed to create `/test`");
+                tx.done(&fs).unwrap();
             },
             100,
         );
@@ -308,20 +302,18 @@ mod tests {
     fn make_directory_many() {
         run_test(
             |fs| {
-                crate::dispatch_fs!(fs, |fs| {
-                    let tx = fs.open_transaction();
-                    for i in 0..1024 {
-                        let mut path = String::from("test");
-                        path.extend(i.to_string().chars());
+                let tx = fs.open_transaction();
+                for i in 0..1024 {
+                    let mut path = String::from("test");
+                    path.extend(i.to_string().chars());
 
-                        let _ = fs
-                            .root()
-                            .unwrap()
-                            .create_entry(&path, FileType::Directory, &tx)
-                            .unwrap_or_else(|_| panic!("Failed to create `{:?}`", path));
-                    }
-                    tx.done(&fs).unwrap();
-                })
+                    let _ = fs
+                        .root()
+                        .unwrap()
+                        .create_entry(&path, FileType::Directory, &tx)
+                        .unwrap_or_else(|_| panic!("Failed to create `{:?}`", path));
+                }
+                tx.done(&fs).unwrap();
             },
             100,
         );

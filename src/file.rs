@@ -179,21 +179,19 @@ mod tests {
     fn write_small() {
         run_test(
             |fs| {
-                crate::dispatch_fs!(fs, |fs| {
-                    let buf = Box::new([0; 4096]);
-                    let tx = fs.open_transaction();
-                    let mut file = fs
-                        .root()
-                        .unwrap()
-                        .create_entry("test", FileType::RegularFile, &tx)
-                        .expect("Failed to create `/test`")
-                        .get_file()
-                        .unwrap();
-                    file.write_slices(0, vec![&buf], &tx)
-                        .expect("Failed to write.");
-                    file.set_size(4096, &tx);
-                    tx.done(&fs).unwrap();
-                })
+                let buf = Box::new([0; 4096]);
+                let tx = fs.open_transaction();
+                let mut file = fs
+                    .root()
+                    .unwrap()
+                    .create_entry("test", FileType::RegularFile, &tx)
+                    .expect("Failed to create `/test`")
+                    .get_file()
+                    .unwrap();
+                file.write_slices(0, vec![&buf], &tx)
+                    .expect("Failed to write.");
+                file.set_size(4096, &tx);
+                tx.done(&fs).unwrap();
             },
             100,
         );
@@ -205,23 +203,21 @@ mod tests {
         const SIZE: usize = 256 * 1024 * 1024;
         run_test(
             |fs| {
-                crate::dispatch_fs!(fs, |fs| {
-                    let buf = Box::new([0; 4096]);
-                    let tx = fs.open_transaction();
-                    let mut file = fs
-                        .root()
-                        .unwrap()
-                        .create_entry("test", FileType::RegularFile, &tx)
-                        .expect("Failed to create `/test`")
-                        .get_file()
-                        .unwrap();
-                    println!("write slice");
-                    file.write_slices(0, vec![&buf; SIZE / 4096], &tx)
-                        .expect("Failed to write.");
-                    file.set_size(SIZE, &tx);
-                    println!("wb");
-                    tx.done(&fs).unwrap();
-                })
+                let buf = Box::new([0; 4096]);
+                let tx = fs.open_transaction();
+                let mut file = fs
+                    .root()
+                    .unwrap()
+                    .create_entry("test", FileType::RegularFile, &tx)
+                    .expect("Failed to create `/test`")
+                    .get_file()
+                    .unwrap();
+                println!("write slice");
+                file.write_slices(0, vec![&buf; SIZE / 4096], &tx)
+                    .expect("Failed to write.");
+                file.set_size(SIZE, &tx);
+                println!("wb");
+                tx.done(&fs).unwrap();
             },
             (SIZE as u64) / 1024 / 1024 + 100,
         );

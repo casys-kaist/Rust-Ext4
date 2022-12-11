@@ -212,7 +212,14 @@ impl<C: Config, const BLK_SIZE: usize> SuperBlock<C, BLK_SIZE> {
 
     #[inline]
     pub fn remove_orphan(&self, cur: InodeNumber, tx: &Transaction) {
-        if let Some((pred, succ)) = self.orphaned_inode.lock().remove(&cur) {
+        let mut guard = self.orphaned_inode.lock();
+        if let Some((pred, succ)) = guard.remove(&cur) {
+            if let Some((_, psucc)) = guard.get_mut(&pred) {
+                *psucc = succ;
+            }
+            if let Some((spred, _)) = guard.get_mut(&succ) {
+                *spred = pred;
+            }
             tx.inode_update_orphan_link(pred, succ);
         } else {
             // Need to search the disk
