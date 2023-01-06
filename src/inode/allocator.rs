@@ -15,45 +15,70 @@
 use crate::filesystem::FileSystem;
 use crate::transaction::Transaction;
 use crate::types::BlockGroupId;
-use crate::{Config, FileType, FsError, InodeNumber};
+use crate::{Config, FileType, FsError, InodeNumber, RwLock, RwLockReadGuard};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 /// Allocator
-pub(crate) struct Allocator {
+pub(crate) struct Allocator<C: Config> {
     last_inode_bg_id: AtomicU32,
-    pub(super) bitmap: Vec<Box<[AtomicU8]>>,
+    pub(super) bitmap: Vec<RwLock<Option<Box<[AtomicU8]>>, C::D>>,
 }
 
-impl Allocator {
+impl<C: Config> Allocator<C> {
     pub fn new(bg: usize) -> Self {
         Self {
             last_inode_bg_id: AtomicU32::new(0),
-            bitmap: Vec::with_capacity(bg),
+            bitmap: (0..bg).map(|_| RwLock::new(None)).collect(),
         }
     }
 
-    pub fn try_allocate_at<C: Config, const BLK_SIZE: usize>(
+    pub fn bitmap<const BLK_SIZE: usize>(
+        &self,
+        bgid: BlockGroupId,
+        fs: &FileSystem<C, BLK_SIZE>,
+    ) -> Result<RwLockReadGuard<Option<Box<[AtomicU8]>>, C::D>, FsError> {
+        let guard = self.bitmap[bgid.0 as usize].read();
+        if guard.is_some() {
+            Ok(guard)
+        } else {
+            drop(guard);
+            let mut guard = self.bitmap[bgid.0 as usize].write();
+            if guard.is_none() {
+                let bg = fs.get_block_group(bgid);
+                let bblock = fs.blocks.get(bg.inode_bitmap_lba)?;
+                *guard = Some(bblock.read().iter().cloned().map(AtomicU8::new).collect());
+            }
+            drop(guard);
+            Ok(self.bitmap[bgid.0 as usize].read())
+        }
+    }
+
+    pub fn try_allocate_at<const BLK_SIZE: usize>(
         &self,
         i: u32,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) -> Option<InodeNumber> {
+    ) -> Result<Option<InodeNumber>, FsError> {
         let ino = InodeNumber(i);
         let (bgid, idx) = ino.into_bgid_index(&fs.sb);
         let (group, ofs) = (idx / 8, idx & 7);
 
-        if self.bitmap[bgid.0 as usize][group].fetch_or(1 << ofs, Ordering::Relaxed) & (1 << ofs)
-            == 0
-        {
-            Some(ino)
+        let guard = self.bitmap(bgid, fs)?;
+        if guard.as_ref().unwrap()[group].fetch_or(1 << ofs, Ordering::Relaxed) & (1 << ofs) == 0 {
+            Ok(Some(ino))
         } else {
-            None
+            Ok(None)
         }
     }
 
-    pub fn get_free_ino(&self, bgid: BlockGroupId) -> Option<usize> {
-        for (group, bits) in self.bitmap[bgid.0 as usize].iter().enumerate() {
+    pub fn get_free_ino<const BLK_SIZE: usize>(
+        &self,
+        bgid: BlockGroupId,
+        fs: &FileSystem<C, BLK_SIZE>,
+    ) -> Result<Option<usize>, FsError> {
+        let guard = self.bitmap(bgid, fs)?;
+        for (group, bits) in guard.as_ref().unwrap().iter().enumerate() {
             loop {
                 // CAS to get bits.
                 let val = bits.load(Ordering::Relaxed);
@@ -72,17 +97,17 @@ impl Allocator {
                     };
                     // Check whether previous value does not hold the one on the position.
                     if bits.fetch_or(mask, Ordering::Relaxed) & mask == 0 {
-                        return Some(ret);
+                        return Ok(Some(ret));
                     }
                 } else {
                     break;
                 }
             }
         }
-        None
+        Ok(None)
     }
 
-    pub fn allocate<C: Config, const BLK_SIZE: usize>(
+    pub fn allocate<const BLK_SIZE: usize>(
         &self,
         fs: &FileSystem<C, BLK_SIZE>,
         de: FileType,
@@ -101,7 +126,7 @@ impl Allocator {
         {
             let bg = fs.get_block_group(bgid);
             if bg.get_free_inodes_count() > 0 {
-                if let Some(ofs) = self.get_free_ino(bgid) {
+                if let Some(ofs) = self.get_free_ino(bgid, fs)? {
                     bg.allocate_inode_on_bg(ofs as u32, trans, de);
                     fs.sb.dec_free_inodes_count(trans);
                     self.last_inode_bg_id.store(bgid.0, Ordering::Release);
@@ -114,7 +139,7 @@ impl Allocator {
         Err(FsError::FsFull)
     }
 
-    pub fn deallocate<C: Config, const BLK_SIZE: usize>(
+    pub fn deallocate<const BLK_SIZE: usize>(
         &self,
         fs: &FileSystem<C, BLK_SIZE>,
         ino: InodeNumber,

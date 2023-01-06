@@ -56,6 +56,25 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
     }
 
     #[inline]
+    pub fn for_each_lba2(
+        &self,
+        st: FileBlockNumber,
+        len: usize,
+        mut f: impl FnMut(AddressingOutput) -> Result<(), FsError>,
+    ) -> Result<(), FsError> {
+        let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
+        let mut n = 0;
+        dispatch_cursor!(self.inode, &fs, st, |mut cursor| {
+            for address in cursor.take(len) {
+                n += 1;
+                crate::println!("{:?} {:?}/{:?}", st, n, len);
+                f(address)?;
+            }
+        });
+        Ok(())
+    }
+
+    #[inline]
     pub fn for_each_lba_mut(
         &self,
         st: FileBlockNumber,

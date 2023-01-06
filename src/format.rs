@@ -260,7 +260,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
 fn make_root<C: Config, const BLK_SIZE: usize>(
     fs: &Arc<FileSystem<C, BLK_SIZE>>,
 ) -> Result<(), FsError> {
-    let ino = fs.inodes.allocator.try_allocate_at(2, fs).unwrap();
+    let ino = fs.inodes.allocator.try_allocate_at(2, fs)?.unwrap();
     let tx = fs.open_transaction();
     let bg = fs.get_block_group(BlockGroupId(0));
     let de = FileType::Directory;

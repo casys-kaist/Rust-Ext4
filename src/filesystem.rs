@@ -61,18 +61,17 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
             // We don't need to hold blockgroup blocks, as they are loaded on memory.
             self.blocks.blocks.flush();
         }
-        {
-            let Self {
-                block_groups,
-                blocks,
-                inodes,
-                ..
-            } = Arc::get_mut(&mut self).unwrap();
-            *block_groups = bgs;
-            inodes.load_bitmap(block_groups, blocks)?;
+
+        let Self {
+            block_groups,
+            blocks,
+            ..
+        } = Arc::get_mut(&mut self).unwrap();
+        *block_groups = bgs;
+        for bg in block_groups {
+            blocks.build_buddy(bg)?;
         }
 
-        self.blocks.build_buddy(&self)?;
         Ok(self)
     }
 

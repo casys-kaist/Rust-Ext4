@@ -19,10 +19,9 @@ use crate::superblock::SuperBlock;
 use crate::transaction::Transaction;
 use crate::{Config, FileType, FsError, InodeNumber};
 use alloc::sync::Arc;
-use core::sync::atomic::AtomicU8;
 
 pub struct Manager<C: Config, const BLK_SIZE: usize> {
-    pub(crate) allocator: Allocator,
+    pub(crate) allocator: Allocator<C>,
     pub(crate) inodes: Cache<InodeNumber, Inode<C, BLK_SIZE>, C::D>,
 }
 
@@ -35,20 +34,6 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
             allocator: Allocator::new(sb.bg_count as usize),
             inodes: Cache::new(),
         }
-    }
-
-    pub(crate) fn load_bitmap(
-        &mut self,
-        bgs: &[crate::block_group::BlockGroup<BLK_SIZE>],
-        blocks: &mut crate::block::Manager<C, BLK_SIZE>,
-    ) -> Result<(), FsError> {
-        for bg in bgs {
-            let bblock = blocks.get(bg.inode_bitmap_lba)?;
-            self.allocator
-                .bitmap
-                .push(bblock.read().iter().cloned().map(AtomicU8::new).collect());
-        }
-        Ok(())
     }
 
     pub fn allocate(
@@ -123,17 +108,21 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         &self,
         ino: InodeNumber,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) {
+    ) -> Result<(), FsError> {
         let (bgid, ofs) = ino.into_bgid_index(&fs.sb);
         let bg = fs.get_block_group(bgid);
         let (group, mask) = (ofs >> 3, 1 << (ofs & 7));
         assert_eq!(
-            self.allocator.bitmap[bgid.0 as usize][group]
-                .fetch_and(!mask, core::sync::atomic::Ordering::Relaxed)
-                & mask,
+            {
+                let guard = self.allocator.bitmap(bgid, fs)?;
+                guard.as_ref().unwrap()[group]
+                    .fetch_and(!mask, core::sync::atomic::Ordering::Relaxed)
+                    & mask
+            },
             mask
         );
         fs.sb.inc_free_inodes_count();
         bg.deallocate_inode();
+        Ok(())
     }
 }

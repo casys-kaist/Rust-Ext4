@@ -86,7 +86,7 @@ impl Collector {
                     fs.blocks.apply_deallocation_on_core(bgid, ofs, count, fs)
                 }
                 PostludeOps::InodeDeallocation(ino) => {
-                    fs.inodes.apply_deallocation_on_core(ino, fs);
+                    fs.inodes.apply_deallocation_on_core(ino, fs)?;
                 }
             }
         }

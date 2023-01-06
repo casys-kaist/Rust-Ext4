@@ -14,6 +14,7 @@
 
 mod allocator;
 
+use crate::block_group::BlockGroup;
 use crate::cache::Cache;
 use crate::filesystem::FileSystem;
 use crate::superblock::SuperBlock;
@@ -82,6 +83,36 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> core::ops::DerefMut
     }
 }
 
+fn find_one(bitmap: &[u8], start: usize) -> Option<usize> {
+    let (s_grp, s_ofs) = (start >> 3, start & 7);
+    for (group, b) in bitmap.iter().enumerate().skip(s_grp) {
+        let b = if group == s_grp {
+            b & !((1 << s_ofs) - 1)
+        } else {
+            *b
+        };
+        if b != 0 {
+            return Some(group * 8 + 7 - (b & !(b - 1)).leading_zeros() as usize);
+        }
+    }
+    None
+}
+
+fn find_zero(bitmap: &[u8], start: usize) -> Option<usize> {
+    let (s_grp, s_ofs) = (start >> 3, start & 7);
+    for (group, b) in bitmap.iter().enumerate().skip(s_grp) {
+        let b = if group == s_grp {
+            b | ((1 << s_ofs) - 1)
+        } else {
+            *b
+        } ^ u8::MAX;
+        if b != 0 {
+            return Some(group * 8 + 7 - (b & !(b - 1)).leading_zeros() as usize);
+        }
+    }
+    None
+}
+
 pub struct Manager<C: Config, const BLK_SIZE: usize> {
     pub(crate) allocator: allocator::Allocator<C::S>,
     pub(crate) blocks: Cache<LogicalBlockNumber, Block<C::Buffer<BLK_SIZE>, C::D>, C::D>,
@@ -98,53 +129,20 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         }
     }
 
-    pub(crate) fn build_buddy(&self, fs: &FileSystem<C, BLK_SIZE>) -> Result<(), FsError> {
-        fn find_one(bitmap: &[u8], start: usize) -> Option<usize> {
-            let (s_grp, s_ofs) = (start >> 3, start & 7);
-            for (group, b) in bitmap.iter().enumerate().skip(s_grp) {
-                let b = if group == s_grp {
-                    b & !((1 << s_ofs) - 1)
-                } else {
-                    *b
-                };
-                if b != 0 {
-                    return Some(group * 8 + 7 - (b & !(b - 1)).leading_zeros() as usize);
-                }
-            }
-            None
-        }
-
-        fn find_zero(bitmap: &[u8], start: usize) -> Option<usize> {
-            let (s_grp, s_ofs) = (start >> 3, start & 7);
-            for (group, b) in bitmap.iter().enumerate().skip(s_grp) {
-                let b = if group == s_grp {
-                    b | ((1 << s_ofs) - 1)
-                } else {
-                    *b
-                } ^ u8::MAX;
-                if b != 0 {
-                    return Some(group * 8 + 7 - (b & !(b - 1)).leading_zeros() as usize);
-                }
-            }
-            None
-        }
-
-        'bgloop: for bgid in (0..fs.sb.bg_count).map(BlockGroupId) {
-            let bg = fs.get_block_group(bgid);
-            let bblock = self.get(bg.block_bitmap_lba)?;
-            let bitmap = bblock.read();
-            let mut pos = 0;
-            while pos < bg.blocks_count as usize {
-                let first_zero = if let Some(p) = find_zero(bitmap.as_ref(), pos) {
-                    p
-                } else {
-                    continue 'bgloop;
-                };
-                let len = find_one(bitmap.as_ref(), first_zero).unwrap_or(bg.blocks_count as usize)
-                    - first_zero;
-                pos = first_zero + len;
-                self.allocator.push_chunk(first_zero, len, bgid);
-            }
+    pub(crate) fn build_buddy(&self, bg: &BlockGroup<BLK_SIZE>) -> Result<(), FsError> {
+        let bblock = self.get(bg.block_bitmap_lba)?;
+        let bitmap = bblock.read();
+        let mut pos = 0;
+        while pos < bg.blocks_count as usize {
+            let first_zero = if let Some(p) = find_zero(bitmap.as_ref(), pos) {
+                p
+            } else {
+                break;
+            };
+            let len = find_one(bitmap.as_ref(), first_zero).unwrap_or(bg.blocks_count as usize)
+                - first_zero;
+            pos = first_zero + len;
+            self.allocator.push_chunk(first_zero, len, bg.bgid);
         }
         Ok(())
     }
