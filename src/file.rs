@@ -63,11 +63,8 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
         mut f: impl FnMut(AddressingOutput) -> Result<(), FsError>,
     ) -> Result<(), FsError> {
         let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
-        let mut n = 0;
         dispatch_cursor!(self.inode, &fs, st, |mut cursor| {
             for address in cursor.take(len) {
-                n += 1;
-                crate::println!("{:?} {:?}/{:?}", st, n, len);
                 f(address)?;
             }
         });

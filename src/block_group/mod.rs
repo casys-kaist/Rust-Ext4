@@ -181,9 +181,8 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
     ) -> Result<Self, FsError> {
         let desc_blocks =
             ((fs.sb.block_desc_size * fs.sb.bg_count as usize + BLK_SIZE - 1) / BLK_SIZE) as u64;
-        let inode_blocks =
-            (((fs.sb.inodes_per_group as usize) * (fs.sb.inode_size as usize) + BLK_SIZE - 1)
-                / BLK_SIZE) as u64;
+        let inode_blocks = (((fs.sb.inodes_per_group as usize) * fs.sb.inode_size + BLK_SIZE - 1)
+            / BLK_SIZE) as u64;
 
         if flags.contains(BlockGroupFlag::BLOCK_UNINIT) {
             let bref = fs

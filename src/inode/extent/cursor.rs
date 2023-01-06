@@ -136,7 +136,7 @@ where
             match ((block..block + (len as u32)).contains(&self.fba), is_init) {
                 (true, true) => return Ok((start + ((self.fba.0 - block.0) as u64), 1)),
                 (_, false) => todo!("Uninitialized extent"),
-                (false, true) if block > self.fba => start + (self.fba.0 as u64 - start.0 as u64),
+                (false, true) if block > self.fba => start + (self.fba.0 as u64 - start.0),
                 (false, true) => start - (self.fba.0 as u64 - block.0 as u64),
             }
         } else if self.path.leafs.is_empty() {

@@ -246,7 +246,7 @@ impl<C: Config, const BLK_SIZE: usize> SuperBlock<C, BLK_SIZE> {
     #[inline]
     pub fn get_inodes_in_group_cnt(&self, bgid: u32) -> u32 {
         let bg_count = self.bg_count;
-        let inodes_per_group = self.inodes_per_group as u32;
+        let inodes_per_group = self.inodes_per_group;
         let total_inodes = self.inodes_count;
         if bgid < bg_count - 1 {
             inodes_per_group

@@ -21,13 +21,13 @@ pub(crate) struct Wrapper<C: Config>(pub C::Buffer<1024>);
 
 impl<C: Config> core::convert::AsRef<[u8]> for Wrapper<C> {
     fn as_ref(&self) -> &[u8] {
-        self.0.as_ref().as_ref()
+        self.0.as_ref()
     }
 }
 
 impl<C: Config> core::convert::AsMut<[u8]> for Wrapper<C> {
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0.as_mut().as_mut()
+        self.0.as_mut()
     }
 }
 

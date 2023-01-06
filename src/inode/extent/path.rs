@@ -466,7 +466,7 @@ where
                         let mut node = Node::from_bytes(hdr_b).unwrap();
                         let base = idx.unwrap();
                         let move_amount = ext.get_entries_cnt() as usize - base - 1;
-                        for i in 0..move_amount as usize {
+                        for i in 0..move_amount {
                             node.insert_at(ext.get(base + i + 1).unwrap(), i)
                                 .unwrap_or_else(|_| unreachable!());
                         }

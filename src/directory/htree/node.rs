@@ -123,7 +123,7 @@ impl<
             hasher.write(&b[tail..tail + 4]);
             hasher.write(&0_i32.to_le_bytes());
 
-            if hasher.finish() as u32 == ByteRw::new(b.as_ref()).read_u32(tail + 4) {
+            if hasher.finish() == ByteRw::new(b.as_ref()).read_u32(tail + 4) {
                 Ok(())
             } else {
                 Err(FsError::InvalidFs("Failed to verify HTree checksum."))

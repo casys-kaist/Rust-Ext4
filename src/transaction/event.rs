@@ -174,7 +174,7 @@ impl Events {
                         Some(ofs as u32)
                     };
                     wb_grp.inode_ops.push(InodeOps::Init(
-                        InodeNumber::from_bgid_index(bgid, ofs as usize, &fs.sb),
+                        InodeNumber::from_bgid_index(bgid, ofs, &fs.sb),
                         de,
                     ));
                     wb_grp.set_bitmap(bitmap_lba, ofs, 1, collector, fs);
@@ -259,7 +259,7 @@ where
     let (block_group, index_in_grp) = ino.into_bgid_index(&fs.sb);
     let byte_offset_in_group = index_in_grp as u64 * inode_size as u64;
     let inode_table_start = fs.get_block_group(block_group).inode_table_first_block;
-    let lba = inode_table_start + (byte_offset_in_group as u64 / BLK_SIZE as u64);
+    let lba = inode_table_start + (byte_offset_in_group / BLK_SIZE as u64);
     let offset_in_block = ((byte_offset_in_group % BLK_SIZE as u64) / inode_size as u64) as usize;
 
     fs.blocks.get_mut(lba, collector).map(|blk| {
@@ -340,23 +340,14 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             debug_assert_eq!(
                 blk[grp] & (1 << dofs),
                 0,
-                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
-                ofs,
-                count,
-                os,
-                oe,
-                ms,
-                me,
-                cs,
-                ce
+                "ofs: {ofs:?} cnt: {count:?} | {os:?}~{oe:?}|{ms:?}~{me:?}|{cs:?}~{ce:?}",
             );
             blk[grp] |= 1 << dofs;
         }
         for grp in ms / 8..me / 8 {
             debug_assert_eq!(
                 blk[grp], 0,
-                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
-                ofs, count, os, oe, ms, me, cs, ce
+                "ofs: {ofs:?} cnt: {count:?} | {os:?}~{oe:?}|{ms:?}~{me:?}|{cs:?}~{ce:?}",
             );
             blk[grp] = 0xff;
         }
@@ -365,15 +356,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             debug_assert_eq!(
                 blk[grp] & (1 << dofs),
                 0,
-                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
-                ofs,
-                count,
-                os,
-                oe,
-                ms,
-                me,
-                cs,
-                ce
+                "ofs: {ofs:?} cnt: {count:?} | {os:?}~{oe:?}|{ms:?}~{me:?}|{cs:?}~{ce:?}",
             );
             blk[grp] |= 1 << dofs;
         }
@@ -397,23 +380,14 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             debug_assert_eq!(
                 blk[grp] & (1 << ofs),
                 1 << ofs,
-                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
-                ofs,
-                count,
-                os,
-                oe,
-                ms,
-                me,
-                cs,
-                ce
+                "ofs: {ofs:?} cnt: {count:?} | {os:?}~{oe:?}|{ms:?}~{me:?}|{cs:?}~{ce:?}",
             );
             blk[grp] &= !(1 << ofs);
         }
         for grp in ms / 8..me / 8 {
             debug_assert_eq!(
                 blk[grp], 0xff,
-                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
-                ofs, count, os, oe, ms, me, cs, ce
+                "ofs: {ofs:?} cnt: {count:?} | {os:?}~{oe:?}|{ms:?}~{me:?}|{cs:?}~{ce:?}",
             );
             blk[grp] = 0;
         }
@@ -422,15 +396,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             debug_assert_eq!(
                 blk[grp] & (1 << ofs),
                 1 << ofs,
-                "ofs: {:?} cnt: {:?} | {:?}~{:?}|{:?}~{:?}|{:?}~{:?}",
-                ofs,
-                count,
-                os,
-                oe,
-                ms,
-                me,
-                cs,
-                ce
+                "ofs: {ofs:?} cnt: {count:?} | {os:?}~{oe:?}|{ms:?}~{me:?}|{cs:?}~{ce:?}",
             );
             blk[grp] &= !(1 << ofs);
         }

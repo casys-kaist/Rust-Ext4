@@ -181,8 +181,8 @@ pub enum InodeAddressingMode<C: Config> {
 impl<C: Config> core::fmt::Debug for InodeAddressingMode<C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Legacy(l) => write!(f, "{:?}", l),
-            Self::Extent(e) => write!(f, "{:?}", e),
+            Self::Legacy(l) => write!(f, "{l:?}"),
+            Self::Extent(e) => write!(f, "{e:?}"),
         }
     }
 }
@@ -217,7 +217,7 @@ impl core::fmt::Debug for RawInodeAddressingMode {
         match self {
             Self::Legacy(Legacy { addresses }) => {
                 for (idx, addr) in addresses.iter().enumerate() {
-                    write!(f, "#{} => {}", idx, addr)?;
+                    write!(f, "#{idx} => {addr}")?;
                 }
             }
             Self::Extent {
@@ -259,7 +259,7 @@ impl core::fmt::Debug for RawInodeAddressingMode {
                             )),
                         })
                     };
-                    dbg_struct.field(&alloc::format!("#{}", index), &node);
+                    dbg_struct.field(&alloc::format!("#{index}"), &node);
                 }
                 dbg_struct.finish()?;
             }

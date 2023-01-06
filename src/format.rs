@@ -48,7 +48,7 @@ impl<'a> FormatAux<'a> {
         volumn_name: &'a [u8; 16],
         hash_seed: &'a [u8; 16],
     ) -> Self {
-        let blocks_cnt = (total_size / (block_size as usize)) as u64;
+        let blocks_cnt = (total_size / block_size) as u64;
         let blocks_per_group = (block_size as u32) * 8;
         let block_group = (blocks_cnt + (blocks_per_group as u64) - 1) / (blocks_per_group as u64);
         let inodes_per_group = {
@@ -139,14 +139,14 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
         ((sb.blocks_count - (sb.first_data_block as u64) + (sb.blocks_per_group as u64) - 1)
             / (sb.blocks_per_group as u64)) as u32;
     let desc_blocks = ((sb.block_desc_size * bgs_count as usize + BLK_SIZE - 1) / BLK_SIZE) as u64;
-    let inode_blocks = (((sb.inodes_per_group as usize) * (sb.inode_size as usize) + BLK_SIZE - 1)
-        / BLK_SIZE) as u32;
+    let inode_blocks =
+        (((sb.inodes_per_group as usize) * sb.inode_size + BLK_SIZE - 1) / BLK_SIZE) as u32;
 
     let mut sb_manipulator = sb.manipulator.lock();
     let mut block_map = BTreeMap::new();
     let mut total_blocks = sb.blocks_count;
 
-    for bgid in (0..bgs_count as u32).map(BlockGroupId) {
+    for bgid in (0..bgs_count).map(BlockGroupId) {
         let (lba, index) = bgid.into_lba_index(sb);
         let block_base = (bgid.0 as u64) * (sb.blocks_per_group as u64);
         let mut start_block = (sb.first_data_block as u64) + block_base + desc_blocks;
@@ -178,7 +178,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             let mut inode_bitmap = ByteRw::new(
                 block_map
                     .entry(LogicalBlockNumber(start_block + 2))
-                    .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed())
+                    .or_insert_with(C::Buffer::<BLK_SIZE>::zeroed)
                     .as_mut(),
             );
             inode_bitmap.set_bitmap(0..1);
@@ -193,14 +193,14 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             {
                 block_map
                     .entry(lba)
-                    .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed());
+                    .or_insert_with(C::Buffer::<BLK_SIZE>::zeroed);
             }
 
             // Fill block bitmap
             let mut block_bitmap = ByteRw::new(
                 block_map
                     .entry(LogicalBlockNumber(start_block + 1))
-                    .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed())
+                    .or_insert_with(C::Buffer::<BLK_SIZE>::zeroed)
                     .as_mut(),
             );
             if sb.is_super_in_bg(bgid) {
@@ -227,7 +227,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             let mut bg = block_group::Manipulator::new(
                 &mut block_map
                     .entry(lba)
-                    .or_insert_with(|| C::Buffer::<BLK_SIZE>::zeroed())
+                    .or_insert_with(C::Buffer::<BLK_SIZE>::zeroed)
                     .as_mut()[index..index + sb.block_desc_size],
             );
 

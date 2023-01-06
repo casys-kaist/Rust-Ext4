@@ -58,7 +58,7 @@ fn prepare_hash_buf<const SIZE: usize>(bytes: &[u8], is_unsigned: bool) -> [u32;
 
     for (i, byte) in bytes.iter().enumerate().take(len) {
         let byte = if is_unsigned {
-            *byte as u8 as u32
+            *byte as u32
         } else {
             *byte as i8 as i32 as u32
         };

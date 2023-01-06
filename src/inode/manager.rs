@@ -88,7 +88,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
             // Compute position of i-node in the block group
             let byte_offset_in_group = index_in_grp as u64 * inode_size as u64;
             // Compute block address
-            let lba = inode_table_start + (byte_offset_in_group as u64 / BLK_SIZE as u64);
+            let lba = inode_table_start + (byte_offset_in_group / BLK_SIZE as u64);
             // Compute position of i-node in the data block
             let offset_in_block = (byte_offset_in_group as usize) % BLK_SIZE;
 

@@ -68,7 +68,7 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> core::ops::Deref
 {
     type Target = C::Buffer<BLK_SIZE>;
     fn deref(&self) -> &Self::Target {
-        &*self.inner
+        &self.inner
     }
 }
 
@@ -79,7 +79,7 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> core::ops::DerefMut
         if let Some(collector) = self.collector.take() {
             collector.track(self.lba);
         }
-        &mut *self.inner
+        &mut self.inner
     }
 }
 
@@ -118,6 +118,8 @@ pub struct Manager<C: Config, const BLK_SIZE: usize> {
     pub(crate) blocks: Cache<LogicalBlockNumber, Block<C::Buffer<BLK_SIZE>, C::D>, C::D>,
     pub(crate) conf: C,
 }
+
+type ReadOutput<Buffer, D> = Result<Arc<Block<Buffer, D>>, FsError>;
 
 impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
     #[inline]
@@ -171,20 +173,17 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         self.allocator.deallocate(ino, lba, size, fs, trans)
     }
 
-    fn _read_contents(
-        &self,
-        lba: LogicalBlockNumber,
-    ) -> Result<Arc<Block<C::Buffer<BLK_SIZE>, C::D>>, FsError> {
+    fn _read_contents(&self, lba: LogicalBlockNumber) -> ReadOutput<C::Buffer<BLK_SIZE>, C::D> {
         Ok(Arc::new(RwLock::new(
             self.conf
                 .read_bytes::<BLK_SIZE>(lba.0 as usize * BLK_SIZE)?,
         )))
     }
 
-    pub(crate) fn get<'l, 'j>(
-        &'l self,
+    pub(crate) fn get<'j>(
+        &self,
         lba: LogicalBlockNumber,
-    ) -> Result<BlockRef<'l, 'j, C, BLK_SIZE, false>, FsError> {
+    ) -> Result<BlockRef<'_, 'j, C, BLK_SIZE, false>, FsError> {
         self.blocks
             .get_or_insert_arc(lba, |_| self._read_contents(lba))
             .map(|inner| BlockRef {

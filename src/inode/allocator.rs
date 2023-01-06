@@ -20,10 +20,12 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
+type Bitmap = Option<Box<[AtomicU8]>>;
+
 /// Allocator
 pub(crate) struct Allocator<C: Config> {
     last_inode_bg_id: AtomicU32,
-    pub(super) bitmap: Vec<RwLock<Option<Box<[AtomicU8]>>, C::D>>,
+    pub(super) bitmap: Vec<RwLock<Bitmap, C::D>>,
 }
 
 impl<C: Config> Allocator<C> {
@@ -38,7 +40,7 @@ impl<C: Config> Allocator<C> {
         &self,
         bgid: BlockGroupId,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) -> Result<RwLockReadGuard<Option<Box<[AtomicU8]>>, C::D>, FsError> {
+    ) -> Result<RwLockReadGuard<Bitmap, C::D>, FsError> {
         let guard = self.bitmap[bgid.0 as usize].read();
         if guard.is_some() {
             Ok(guard)
@@ -148,7 +150,7 @@ impl<C: Config> Allocator<C> {
     ) {
         let (bgid, ofs) = ino.into_bgid_index(&fs.sb);
         let bg = fs.get_block_group(bgid);
-        trans.inode_deallocation_on_bg(ino, bgid, bg.inode_bitmap_lba, ofs as usize, de);
+        trans.inode_deallocation_on_bg(ino, bgid, bg.inode_bitmap_lba, ofs, de);
         trans.free_inodes_count_inc_on_sb();
     }
 }
