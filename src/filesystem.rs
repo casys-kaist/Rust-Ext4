@@ -19,7 +19,7 @@ use crate::inode;
 use crate::superblock::SuperBlock;
 use crate::transaction::{Events, Transaction};
 use crate::types::BlockGroupId;
-use crate::{Config, FileType, FsError, FsObject, InodeNumber};
+use crate::{Config, FileType, FsError, FsObject, InodeNumber, RwLock, RwLockReadGuard};
 use alloc::collections::LinkedList;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -28,7 +28,7 @@ use core::cell::RefCell;
 pub struct FileSystem<C: Config, const BLK_SIZE: usize> {
     pub(crate) sb: SuperBlock<C, BLK_SIZE>,
 
-    block_groups: Vec<BlockGroup<BLK_SIZE>>,
+    block_groups: Vec<RwLock<Option<BlockGroup<BLK_SIZE>>, C::D>>,
 
     pub(crate) blocks: block::Manager<C, BLK_SIZE>,
     pub(crate) inodes: inode::Manager<C, BLK_SIZE>,
@@ -39,40 +39,10 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
     pub fn conf(&self) -> &C {
         &self.blocks.conf
     }
+
     #[inline]
     pub fn conf_mut(&mut self) -> &mut C {
         &mut self.blocks.conf
-    }
-
-    fn make_fs_ctxt(mut self: Arc<Self>) -> Result<Arc<Self>, FsError> {
-        let mut bgs = Vec::with_capacity(self.sb.bg_count as usize);
-        for bgid in (0..self.sb.bg_count).map(BlockGroupId) {
-            let tx = self.open_transaction();
-            let (lba, index) = bgid.into_lba_index(&self.sb);
-            let bg_arr = self.blocks.get_mut(lba, &tx.collector)?;
-            bgs.push(BlockGroup::from_disk(
-                bg_arr,
-                index..index + self.sb.block_desc_size,
-                bgid,
-                &self,
-                &tx,
-            )?);
-            tx.done(&self)?;
-            // We don't need to hold blockgroup blocks, as they are loaded on memory.
-            self.blocks.blocks.flush();
-        }
-
-        let Self {
-            block_groups,
-            blocks,
-            ..
-        } = Arc::get_mut(&mut self).unwrap();
-        *block_groups = bgs;
-        for bg in block_groups {
-            blocks.build_buddy(bg)?;
-        }
-
-        Ok(self)
     }
 
     #[inline]
@@ -107,8 +77,35 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
     }
 
     #[inline]
-    pub fn get_block_group(&self, bgid: BlockGroupId) -> &BlockGroup<BLK_SIZE> {
-        &self.block_groups[bgid.0 as usize]
+    pub fn get_block_group(
+        &self,
+        bgid: BlockGroupId,
+    ) -> Result<RwLockReadGuard<Option<BlockGroup<BLK_SIZE>>, C::D>, FsError> {
+        let guard = self.block_groups[bgid.0 as usize].read();
+        if guard.is_some() {
+            Ok(guard)
+        } else {
+            drop(guard);
+            let mut guard = self.block_groups[bgid.0 as usize].write();
+            if guard.is_none() {
+                let (lba, index) = bgid.into_lba_index(&self.sb);
+                let tx = self.open_transaction();
+                let bg_arr = self.blocks.get_mut(lba, &tx.collector)?;
+                *guard = Some(BlockGroup::from_disk(
+                    bg_arr,
+                    index..index + self.sb.block_desc_size,
+                    bgid,
+                    self,
+                    &tx,
+                )?);
+                tx.done(self)?;
+                // We don't need to hold blockgroup blocks, as they are loaded on memory.
+                self.blocks.blocks.flush();
+                self.blocks.build_buddy(guard.as_ref().unwrap())?;
+            }
+            drop(guard);
+            Ok(self.block_groups[bgid.0 as usize].read())
+        }
     }
 
     // Fixme: Lock
@@ -123,18 +120,15 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
     }
 
     /// Open a file sytem from the device `IO`.
-    pub fn new(
-        conf: C,
-        sb: SuperBlock<C, BLK_SIZE>,
-    ) -> Result<Arc<FileSystem<C, BLK_SIZE>>, FsError> {
+    pub fn new(conf: C, sb: SuperBlock<C, BLK_SIZE>) -> Arc<FileSystem<C, BLK_SIZE>> {
         let blocks = block::Manager::new(&sb, conf);
         let inodes = inode::Manager::new(&sb);
+        let bg_count = sb.bg_count;
         Arc::new(FileSystem {
             sb,
             blocks,
-            block_groups: Vec::new(),
+            block_groups: (0..bg_count).map(|_| RwLock::new(None)).collect(),
             inodes,
         })
-        .make_fs_ctxt()
     }
 }

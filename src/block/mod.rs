@@ -169,7 +169,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         size: usize,
         fs: &FileSystem<C, BLK_SIZE>,
         trans: &Transaction,
-    ) {
+    ) -> Result<(), FsError> {
         self.allocator.deallocate(ino, lba, size, fs, trans)
     }
 
@@ -258,9 +258,11 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         ofs: usize,
         count: usize,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) {
-        let bg = fs.get_block_group(bgid);
+    ) -> Result<(), FsError> {
+        let guard = fs.get_block_group(bgid)?;
+        let bg = guard.as_ref().unwrap();
         self.allocator.push_chunk(ofs, count, bgid);
         bg.deallocate_blocks(count);
+        Ok(())
     }
 }

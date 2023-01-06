@@ -395,7 +395,9 @@ impl<C: Config, const BLK_SIZE: usize> Drop for Inode<C, BLK_SIZE> {
             })()
             .unwrap();
             // Deallocate the inode.
-            fs.inodes.deallocate(&fs, self.ino, self.ftype, &tx);
+            fs.inodes
+                .deallocate(&fs, self.ino, self.ftype, &tx)
+                .unwrap();
 
             // Remove inode from orphan list
             fs.sb.remove_orphan(self.ino, &tx);

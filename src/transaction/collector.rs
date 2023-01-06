@@ -83,7 +83,7 @@ impl Collector {
         for postlude in postludes.into_inner().into_iter() {
             match postlude {
                 PostludeOps::BlockDeallocation { bgid, ofs, count } => {
-                    fs.blocks.apply_deallocation_on_core(bgid, ofs, count, fs)
+                    fs.blocks.apply_deallocation_on_core(bgid, ofs, count, fs)?;
                 }
                 PostludeOps::InodeDeallocation(ino) => {
                     fs.inodes.apply_deallocation_on_core(ino, fs)?;

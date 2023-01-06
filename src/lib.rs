@@ -61,7 +61,7 @@ pub enum FsBlkSizeDispatch<C: Config> {
 
 /// Open filesystem from io.
 pub fn open_fs<C: Config, const N: usize>(conf: C) -> Result<Arc<FileSystem<C, N>>, FsError> {
-    superblock::new_sb(&conf).and_then(|sb| FileSystem::new(conf, sb))
+    superblock::new_sb(&conf).map(|sb| FileSystem::new(conf, sb))
 }
 
 pub mod format;

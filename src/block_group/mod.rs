@@ -24,7 +24,6 @@ use crate::utils::ByteRw;
 use crate::{Config, FileType, FsError, InodeNumber, LogicalBlockNumber};
 use bitflags::bitflags;
 
-use alloc::sync::Arc;
 pub use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 pub(crate) use raw::Manipulator;
 
@@ -136,7 +135,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
         raw: crate::block::BlockRef<C, BLK_SIZE, true>,
         split: core::ops::Range<usize>,
         bgid: BlockGroupId,
-        fs: &Arc<FileSystem<C, BLK_SIZE>>,
+        fs: &FileSystem<C, BLK_SIZE>,
         tx: &Transaction,
     ) -> Result<Self, FsError> {
         let guard = raw.read();
@@ -174,7 +173,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
         self,
         raw: crate::block::BlockRef<C, BLK_SIZE, true>,
         split: core::ops::Range<usize>,
-        fs: &Arc<FileSystem<C, BLK_SIZE>>,
+        fs: &FileSystem<C, BLK_SIZE>,
         flags: BlockGroupFlag,
         _csum: u16,
         tx: &Transaction,

@@ -48,7 +48,8 @@ impl<C: Config> Allocator<C> {
             drop(guard);
             let mut guard = self.bitmap[bgid.0 as usize].write();
             if guard.is_none() {
-                let bg = fs.get_block_group(bgid);
+                let bg_guard = fs.get_block_group(bgid)?;
+                let bg = bg_guard.as_ref().unwrap();
                 let bblock = fs.blocks.get(bg.inode_bitmap_lba)?;
                 *guard = Some(bblock.read().iter().cloned().map(AtomicU8::new).collect());
             }
@@ -126,7 +127,8 @@ impl<C: Config> Allocator<C> {
             .skip(bgid as usize)
             .take(fs.sb.bg_count as usize)
         {
-            let bg = fs.get_block_group(bgid);
+            let guard = fs.get_block_group(bgid)?;
+            let bg = guard.as_ref().unwrap();
             if bg.get_free_inodes_count() > 0 {
                 if let Some(ofs) = self.get_free_ino(bgid, fs)? {
                     bg.allocate_inode_on_bg(ofs as u32, trans, de);
@@ -147,10 +149,12 @@ impl<C: Config> Allocator<C> {
         ino: InodeNumber,
         de: FileType,
         trans: &Transaction,
-    ) {
+    ) -> Result<(), FsError> {
         let (bgid, ofs) = ino.into_bgid_index(&fs.sb);
-        let bg = fs.get_block_group(bgid);
+        let guard = fs.get_block_group(bgid)?;
+        let bg = guard.as_ref().unwrap();
         trans.inode_deallocation_on_bg(ino, bgid, bg.inode_bitmap_lba, ofs, de);
         trans.free_inodes_count_inc_on_sb();
+        Ok(())
     }
 }

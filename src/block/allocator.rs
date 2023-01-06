@@ -148,19 +148,18 @@ where
             let (bgid, index) = hope.into_bgid_index(&fs.sb).unwrap();
             let mut hope = Some(index);
 
-            for (bgid, bd) in self
-                .buddies
-                .iter()
-                .enumerate()
-                .map(|(id, b)| (BlockGroupId(id as u32), b))
+            for bgid in (0..self.buddies.len())
+                .map(|id| BlockGroupId(id as u32))
                 .cycle()
                 .skip(bgid.0 as usize)
                 .take(self.buddies.len())
             {
+                let guard = fs.get_block_group(bgid)?;
+                let (bg, bd) = (guard.as_ref().unwrap(), &self.buddies[bgid.0 as usize]);
                 if let Some((index, allocated)) = bd.try_allocate(size, hope.take()) {
                     // TODO: bitmap update
-                    fs.get_block_group(bgid)
-                        .allocate_blocks(ino, index, allocated, tx);
+
+                    bg.allocate_blocks(ino, index, allocated, tx);
                     return Ok((
                         LogicalBlockNumber::from_bgid_index(bgid, index, &fs.sb),
                         allocated,
@@ -180,15 +179,17 @@ where
         mut size: usize,
         fs: &FileSystem<C, BLK_SIZE>,
         trans: &Transaction,
-    ) {
+    ) -> Result<(), FsError> {
         // Here the buddy state is not be updated. Just make a transation on here.
         // When writeback is finished, the buddy state will be updated.
         while size > 0 {
             let (bgid, ofs) = lba.into_bgid_index(&fs.sb).unwrap();
-            let bg = fs.get_block_group(bgid);
+            let guard = fs.get_block_group(bgid)?;
+            let bg = guard.as_ref().unwrap();
             let count = core::cmp::min(bg.blocks_count as usize - ofs, size);
             trans.block_deallocation_on_bg(ino, bgid, bg.block_bitmap_lba, ofs, count);
             size -= count;
         }
+        Ok(())
     }
 }

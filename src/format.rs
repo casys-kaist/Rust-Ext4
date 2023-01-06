@@ -150,6 +150,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
         let (lba, index) = bgid.into_lba_index(sb);
         let block_base = (bgid.0 as u64) * (sb.blocks_per_group as u64);
         let mut start_block = (sb.first_data_block as u64) + block_base + desc_blocks;
+        let is_lazy_init_bg = bgid.0 != 0 && bgid.0 != sb.bg_count - 1;
 
         // Cacluate free blocks and free inodes in group.
         let free_blocks = core::cmp::min(sb.blocks_per_group as u64, total_blocks) as u32
@@ -173,7 +174,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
         total_blocks = total_blocks.saturating_sub(sb.blocks_per_group as u64);
         // if bgid is zero, init inode table and bitmap.
         // Otherwise, initialize lazily.
-        if bgid.0 == 0 {
+        if !is_lazy_init_bg {
             // Fill inode bitmap
             let mut inode_bitmap = ByteRw::new(
                 block_map
@@ -181,9 +182,11 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
                     .or_insert_with(C::Buffer::<BLK_SIZE>::zeroed)
                     .as_mut(),
             );
-            inode_bitmap.set_bitmap(0..1);
-            inode_bitmap.set_bitmap(2..10);
-            free_inodes -= 9;
+            if bgid.0 == 0 {
+                inode_bitmap.set_bitmap(0..1);
+                inode_bitmap.set_bitmap(2..10);
+                free_inodes -= 9;
+            }
             // Set end of inode bitmap. kill 1) unusable 2) padding.
             inode_bitmap.set_bitmap(sb.inodes_per_group as usize..BLK_SIZE * 8);
 
@@ -237,7 +240,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             bg.free_blocks_count().set(free_blocks);
             bg.free_inodes_count().set(free_inodes);
             bg.used_dirs_count().set(0);
-            if bgid.0 != 0 {
+            if is_lazy_init_bg {
                 bg.flags()
                     .set((BlockGroupFlag::INODE_UNINIT | BlockGroupFlag::BLOCK_UNINIT).bits());
             }
@@ -262,7 +265,8 @@ fn make_root<C: Config, const BLK_SIZE: usize>(
 ) -> Result<(), FsError> {
     let ino = fs.inodes.allocator.try_allocate_at(2, fs)?.unwrap();
     let tx = fs.open_transaction();
-    let bg = fs.get_block_group(BlockGroupId(0));
+    let guard = fs.get_block_group(BlockGroupId(0))?;
+    let bg = guard.as_ref().unwrap();
     let de = FileType::Directory;
 
     bg.allocate_inode_on_bg(1, &tx, de);
@@ -307,7 +311,7 @@ pub fn format<C: Config, const BLK_SIZE: usize>(
     let mut sb = make_sb::<C, BLK_SIZE>(aux);
     fill_bg(&dev, &mut sb)?;
     dev.write_bytes(1024, &sb.manipulator.lock().rw.inner().0)?;
-    let fs = FileSystem::<C, BLK_SIZE>::new(dev, sb)?;
+    let fs = FileSystem::<C, BLK_SIZE>::new(dev, sb);
     make_root(&fs)?;
     Ok(fs)
 }

@@ -20,7 +20,6 @@ use crate::filesystem::FileSystem;
 use crate::inode::RawInodeAddressingMode;
 use crate::{BlockGroupId, Config, FileType, FsError, InodeNumber, LogicalBlockNumber};
 use alloc::collections::LinkedList;
-use alloc::sync::Arc;
 use core::cell::RefCell;
 use event::{
     BlockAllocationOnBg, BlockDeallocationOnBg, InodeAddLink, InodeAllocationOnBg,
@@ -217,7 +216,7 @@ impl Transaction {
     #[inline]
     pub fn done<C: Config, const BLK_SIZE: usize>(
         self,
-        fs: &Arc<FileSystem<C, BLK_SIZE>>,
+        fs: &FileSystem<C, BLK_SIZE>,
     ) -> Result<(), FsError> {
         let Self {
             mut events,

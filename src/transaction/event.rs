@@ -22,7 +22,6 @@ use crate::{
     BlockGroupId, Config, FileType, FsError, InodeNumber, LogicalBlockNumber, TicketLockGuard,
 };
 use alloc::collections::LinkedList;
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::convert::TryInto;
@@ -214,7 +213,7 @@ impl Events {
 
     pub fn apply_on_disk<C: Config, const BLK_SIZE: usize>(
         &mut self,
-        fs: &Arc<FileSystem<C, BLK_SIZE>>,
+        fs: &FileSystem<C, BLK_SIZE>,
         collector: &Collector,
     ) -> Result<(), FsError> {
         let events = self.inner.take().unwrap().into_inner();
@@ -258,7 +257,8 @@ where
     let inode_size = fs.sb.inode_size;
     let (block_group, index_in_grp) = ino.into_bgid_index(&fs.sb);
     let byte_offset_in_group = index_in_grp as u64 * inode_size as u64;
-    let inode_table_start = fs.get_block_group(block_group).inode_table_first_block;
+    let guard = fs.get_block_group(block_group)?;
+    let inode_table_start = guard.as_ref().unwrap().inode_table_first_block;
     let lba = inode_table_start + (byte_offset_in_group / BLK_SIZE as u64);
     let offset_in_block = ((byte_offset_in_group % BLK_SIZE as u64) / inode_size as u64) as usize;
 
@@ -276,7 +276,7 @@ struct SbDirtyTracker<'a, C: Config, const BLK_SIZE: usize> {
 }
 
 impl<'a, C: Config, const BLK_SIZE: usize> SbDirtyTracker<'a, C, BLK_SIZE> {
-    fn new(fs: &'a Arc<FileSystem<C, BLK_SIZE>>) -> Self {
+    fn new(fs: &'a FileSystem<C, BLK_SIZE>) -> Self {
         Self {
             inner: fs.sb.manipulator.lock(),
             dirty: false,
@@ -402,11 +402,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
         }
     }
 
-    pub fn flush(
-        self,
-        fs: &Arc<FileSystem<C, BLK_SIZE>>,
-        collector: &Collector,
-    ) -> Result<(), FsError> {
+    pub fn flush(self, fs: &FileSystem<C, BLK_SIZE>, collector: &Collector) -> Result<(), FsError> {
         // FIXME: Flush the journal into disk.
         let WritebackGroup {
             bg_deltas,
@@ -472,7 +468,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
     }
 
     fn submit_inode_ops(
-        fs: &Arc<FileSystem<C, BLK_SIZE>>,
+        fs: &FileSystem<C, BLK_SIZE>,
         op: InodeOps,
         raw_sb: &mut SbDirtyTracker<C, BLK_SIZE>,
         collector: &Collector,

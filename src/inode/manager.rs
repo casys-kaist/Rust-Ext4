@@ -65,7 +65,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         ino: InodeNumber,
         ftype: FileType,
         tx: &Transaction,
-    ) {
+    ) -> Result<(), FsError> {
         self.allocator.deallocate(fs, ino, ftype, tx)
     }
 
@@ -83,7 +83,9 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
             let inode_size = fs.sb.inode_size;
             let (block_group, index_in_grp) = ino.into_bgid_index(&fs.sb);
             // Load block group, where i-node is located
-            let inode_table_start = fs.get_block_group(block_group).inode_table_first_block;
+            let guard = fs.get_block_group(block_group)?;
+            let bg = guard.as_ref().unwrap();
+            let inode_table_start = bg.inode_table_first_block;
 
             // Compute position of i-node in the block group
             let byte_offset_in_group = index_in_grp as u64 * inode_size as u64;
@@ -110,7 +112,8 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         fs: &FileSystem<C, BLK_SIZE>,
     ) -> Result<(), FsError> {
         let (bgid, ofs) = ino.into_bgid_index(&fs.sb);
-        let bg = fs.get_block_group(bgid);
+        let guard = fs.get_block_group(bgid)?;
+        let bg = guard.as_ref().unwrap();
         let (group, mask) = (ofs >> 3, 1 << (ofs & 7));
         assert_eq!(
             {

@@ -601,7 +601,7 @@ where
                 (leaf.len - new_len) as usize,
                 fs,
                 tx,
-            );
+            )?;
         }
         dispatch_entry_mut!(self.last_mut(), |node, idx| {
             if new_len != 0 {
@@ -645,7 +645,7 @@ where
 
                             let lba = p_node.into_inner().lba();
                             assert_eq!(node.get(idx.unwrap()).unwrap().next_node().unwrap(), lba);
-                            fs.blocks.deallocate(self.ino, lba, 1, fs, tx);
+                            fs.blocks.deallocate(self.ino, lba, 1, fs, tx)?;
                         }
                     });
                 }
