@@ -149,9 +149,31 @@ impl InodeNumber {
     }
 }
 
+pub struct Symlink<C: Config, const BLK_SIZE: usize> {
+    pub(crate) inode: alloc::sync::Arc<Inode<C, BLK_SIZE>>,
+}
+
+impl<C: Config, const BLK_SIZE: usize> Symlink<C, BLK_SIZE> {
+    pub fn get_link_path(&self) -> alloc::string::String {
+        assert!(
+            self.inode.get_size() <= 60,
+            "Long symbolic path not supported"
+        );
+        self.inode
+            .rw
+            .read()
+            .addresses
+            .as_bytes()
+            .iter()
+            .filter_map(|c| if c > &0 { Some(*c as char) } else { None })
+            .collect::<alloc::string::String>()
+    }
+}
+
 pub enum FsObject<C: Config, const BLK_SIZE: usize> {
     Directory(crate::directory::Directory<C, BLK_SIZE>),
     File(crate::file::File<C, BLK_SIZE>),
+    Symlink(Symlink<C, BLK_SIZE>),
 }
 
 impl<C: Config, const BLK_SIZE: usize> FsObject<C, BLK_SIZE> {
@@ -178,6 +200,7 @@ impl<C: Config, const BLK_SIZE: usize> FsObject<C, BLK_SIZE> {
         match self {
             Self::Directory(d) => &d.inode,
             Self::File(f) => &f.inode,
+            Self::Symlink(s) => &s.inode,
         }
     }
 }

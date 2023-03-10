@@ -23,6 +23,7 @@ use crate::file::File;
 use crate::filesystem::FileSystem;
 use crate::superblock::Ext4FeatureIncompatible;
 use crate::transaction::Transaction;
+use crate::types::Symlink;
 use crate::{
     Config, FileBlockNumber, FileType, FsError, FsObject, InodeMode, InodeNumber,
     LogicalBlockNumber, RwLock,
@@ -273,7 +274,7 @@ impl core::fmt::Debug for RawInodeAddressingMode {
 macro_rules! dispatch_cursor {
     ($self_:expr, $fs:expr, $fba:expr, |$cursor:ident| $code:expr) => {{
         let rw = $self_.rw.read();
-        match &rw.addresses {
+        match &rw.addresses.as_addressing_mode() {
             $crate::inode::InodeAddressingMode::Extent(tree) => {
                 let $cursor = tree.cursor_from_fba($self_.ino, $fs, $fba)?;
                 $code
@@ -286,7 +287,7 @@ macro_rules! dispatch_cursor {
     }};
     ($self_:expr, $fs:expr, $fba:expr, |mut $cursor:ident| $code:expr) => {{
         let rw = $self_.rw.read();
-        match &rw.addresses {
+        match &rw.addresses.as_addressing_mode() {
             $crate::inode::InodeAddressingMode::Extent(tree) => {
                 #[allow(unused_mut)]
                 let mut $cursor = tree.cursor_from_fba($self_.ino, $fs, $fba)?;
@@ -306,7 +307,7 @@ macro_rules! dispatch_cursor {
 macro_rules! dispatch_cursor_mut {
     ($self_:expr, $fs:expr, $fba:expr, $tx:expr, |$cursor:ident| $code:expr) => {{
         let mut rw = $self_.rw.write();
-        match &mut rw.addresses {
+        match rw.addresses.as_addressing_mode_mut() {
             $crate::inode::InodeAddressingMode::Extent(tree) => {
                 let $cursor = tree.cursor_from_fba_mut($self_.ino, $fs, $fba, $tx)?;
                 $code
@@ -319,7 +320,7 @@ macro_rules! dispatch_cursor_mut {
     }};
     ($self_:expr, $fs:expr, $fba:expr, $tx:expr, |mut $cursor:ident| $code:expr) => {{
         let mut rw = $self_.rw.write();
-        match &mut rw.addresses {
+        match rw.addresses.as_addressing_mode_mut() {
             $crate::inode::InodeAddressingMode::Extent(tree) => {
                 let mut $cursor = tree.cursor_from_fba_mut($self_.ino, $fs, $fba, $tx)?;
                 $code
@@ -337,7 +338,7 @@ macro_rules! dispatch_cursor_mut {
 macro_rules! dispatch_cursor_last_mut {
     ($self_:expr, $fs:expr, $tx:expr, |$cursor:ident| $code:expr) => {{
         let mut rw = $self_.rw.write();
-        match &mut rw.addresses {
+        match rw.addresses.as_addressing_mode_mut() {
             $crate::inode::InodeAddressingMode::Extent(tree) => {
                 let $cursor = tree.cursor_last_mut($self_.ino, $fs, $tx)?;
                 $code
@@ -350,7 +351,7 @@ macro_rules! dispatch_cursor_last_mut {
     }};
     ($self_:expr, $fs:expr, $tx:expr, |mut $cursor:ident| $code:expr) => {{
         let mut rw = $self_.rw.write();
-        match &mut rw.addresses {
+        match rw.addresses.as_addressing_mode_mut() {
             $crate::inode::InodeAddressingMode::Extent(tree) => {
                 let mut $cursor = tree.cursor_last_mut($self_.ino, $fs, $tx)?;
                 $code
@@ -363,11 +364,52 @@ macro_rules! dispatch_cursor_last_mut {
     }};
 }
 
+pub enum IBlock<C: Config> {
+    AddressingMode(InodeAddressingMode<C>),
+    InlineData([u32; 15]),
+}
+
+impl<C: Config> IBlock<C> {
+    pub fn as_addressing_mode(&self) -> &InodeAddressingMode<C> {
+        match self {
+            IBlock::AddressingMode(addresses) => addresses,
+            IBlock::InlineData(_) => panic!("Inode does not have addressing info"),
+        }
+    }
+
+    pub fn as_addressing_mode_mut(&mut self) -> &mut InodeAddressingMode<C> {
+        match self {
+            IBlock::AddressingMode(addresses) => addresses,
+            IBlock::InlineData(_) => panic!("Inode does not have addressing info"),
+        }
+    }
+
+    fn as_addressing_mode_raw(&self) -> RawInodeAddressingMode {
+        match self {
+            IBlock::AddressingMode(addresses) => addresses.as_raw(),
+            IBlock::InlineData(_) => panic!("Inode does not have addressing info"),
+        }
+    }
+
+    pub fn as_bytes(&self) -> [u8; 60] {
+        match self {
+            IBlock::AddressingMode(_) => panic!("Cannot handle addresses as inline data"),
+            IBlock::InlineData(data) => {
+                let mut res = [0; 60];
+                for i in 0..15 {
+                    res[4 * i..][..4].copy_from_slice(&data[i].to_le_bytes());
+                }
+                res
+            }
+        }
+    }
+}
+
 pub struct InodeRw<C: Config, const BLK_SIZE: usize> {
     pub mode: InodeMode,
     pub size: u64,
     pub links_count: u16,
-    pub addresses: InodeAddressingMode<C>,
+    pub addresses: IBlock<C>,
 }
 
 pub struct Inode<C: Config, const BLK_SIZE: usize> {
@@ -440,6 +482,12 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
                 ));
             }
 
+            let addresses = if let Some(FileType::Symlink) = type_ {
+                IBlock::InlineData(raw_inode.get_inline_data())
+            } else {
+                IBlock::AddressingMode(raw_inode.get_addressing_mode(fs))
+            };
+
             Ok(Inode {
                 fs: Arc::downgrade(fs),
                 ino,
@@ -451,7 +499,7 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
                     size: raw_inode.size(fs).get(),
                     links_count: raw_inode.links_count().get(),
                     mode: InodeMode::from_bits_truncate(raw_inode.mode(fs).get()),
-                    addresses: raw_inode.get_addressing_mode(fs),
+                    addresses,
                 }),
             })
         } else {
@@ -481,6 +529,10 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
             flags |= InodeFlag::INDEX;
         }
 
+        if matches!(ftype, FileType::Symlink) {
+            todo!("Currently not support symbolic link creation");
+        }
+
         Inode {
             fs: Arc::downgrade(fs),
             ino,
@@ -492,7 +544,7 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
                 size: 0,
                 links_count: 1,
                 mode: Ext4De::from_file_type(ftype).default_mode(),
-                addresses,
+                addresses: IBlock::AddressingMode(addresses),
             }),
         }
     }
@@ -528,7 +580,11 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
     #[inline]
     pub fn set_size(&self, size: u64, tx: &Transaction) {
         self.rw.write().size = size;
-        tx.inode_set_size(self.ino, size, self.rw.read().addresses.as_raw());
+        tx.inode_set_size(
+            self.ino,
+            size,
+            self.rw.read().addresses.as_addressing_mode_raw(),
+        );
     }
 
     // FIXME: update path
@@ -537,6 +593,7 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
         match self.ftype {
             FileType::RegularFile => FsObject::File(File { inode: self }),
             FileType::Directory => FsObject::Directory(Directory { inode: self }),
+            FileType::Symlink => FsObject::Symlink(Symlink { inode: self }),
             _ => todo!("{:?}", self.ftype),
         }
     }

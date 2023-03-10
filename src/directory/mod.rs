@@ -91,7 +91,14 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
     pub fn open_entry(&self, entry: &str) -> Result<FsObject<C, BLK_SIZE>, FsError> {
         let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
         let (inumber, type_) = self.lookup_entry(&fs, entry)?;
-        fs.get_inode_as_fs_object(inumber, type_)
+        let result = fs.get_inode_as_fs_object(inumber, type_);
+        match result {
+            Ok(FsObject::Symlink(sym)) => {
+                let link = sym.get_link_path();
+                self.open_entry(&link)
+            }
+            _ => result,
+        }
     }
 
     pub fn create_entry(
