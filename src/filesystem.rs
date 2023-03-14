@@ -100,7 +100,6 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
                 )?);
                 tx.done(self)?;
                 // We don't need to hold blockgroup blocks, as they are loaded on memory.
-                self.blocks.blocks.flush();
                 self.blocks.build_buddy(guard.as_ref().unwrap())?;
             }
             drop(guard);
