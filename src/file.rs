@@ -15,7 +15,7 @@
 use crate::inode::{AddressingOutput, Inode};
 use crate::transaction::Transaction;
 use crate::types::Zero;
-use crate::{Config, FileBlockNumber, FsError};
+use crate::{Config, FileBlockNumber, FileSystem, FsError};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 
@@ -42,32 +42,17 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
     #[inline]
     pub fn for_each_lba(
         &self,
+        fs: &FileSystem<C, BLK_SIZE>,
         st: FileBlockNumber,
         len: usize,
         mut f: impl FnMut(AddressingOutput) -> Result<(), FsError>,
     ) -> Result<(), FsError> {
-        let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
-        dispatch_cursor!(self.inode, &fs, st, |mut cursor| {
+        dispatch_cursor!(self.inode, fs, st, |mut cursor| {
             for address in cursor.take(len) {
                 f(address)?;
             }
         });
-        Ok(())
-    }
 
-    #[inline]
-    pub fn for_each_lba2(
-        &self,
-        st: FileBlockNumber,
-        len: usize,
-        mut f: impl FnMut(AddressingOutput) -> Result<(), FsError>,
-    ) -> Result<(), FsError> {
-        let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
-        dispatch_cursor!(self.inode, &fs, st, |mut cursor| {
-            for address in cursor.take(len) {
-                f(address)?;
-            }
-        });
         Ok(())
     }
 
@@ -114,7 +99,12 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
         let len = iovec.len() * (4096 / BLK_SIZE);
         let (mut cnt, mut batch, mut start) = (0, Vec::new(), None);
         let mut slices = iovec.into_iter();
-        self.for_each_lba_mut(fba, len, tx, |lba| {
+        self.for_each_lba(&fs, fba, len, |addr| {
+            let lba = match addr {
+                AddressingOutput::Initialized(lba) => lba,
+                _ => unreachable!(),
+            };
+
             let slice = slices.next().unwrap();
             if *start.get_or_insert(lba) + cnt != lba {
                 // Flush the request.
@@ -130,6 +120,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
             batch.push(slice);
             Ok(())
         })?;
+
         if !batch.is_empty() {
             fs.blocks
                 .conf
@@ -150,7 +141,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
         let (mut cnt, mut start) = (0, None);
         assert_eq!(ofs & 0xfff, 0);
 
-        self.for_each_lba(FileBlockNumber((ofs / BLK_SIZE) as u32), len, |addr| {
+        self.for_each_lba(&fs, FileBlockNumber((ofs / BLK_SIZE) as u32), len, |addr| {
             match addr {
                 AddressingOutput::Uninitialized => iovec.extend(Some(C::Buffer::<4096>::zeroed())),
                 AddressingOutput::Initialized(lba) => {
@@ -172,6 +163,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
             }
             Ok(())
         })?;
+
         if cnt > 0 {
             fs.blocks
                 .conf
@@ -182,6 +174,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
                 )
                 .map_err(|_| FsError::IoError)?;
         }
+
         Ok(())
     }
 }

@@ -145,7 +145,9 @@ where
     ) -> Result<(LogicalBlockNumber, usize), FsError> {
         let mut size = core::cmp::min(BLK_SIZE * 4, size);
         while size > 0 {
-            let (bgid, index) = hope.into_bgid_index(&fs.sb).unwrap();
+            let (bgid, index) = hope
+                .into_bgid_index(&fs.sb)
+                .unwrap_or_else(|| panic!("hope: {:?}", hope));
             let mut hope = Some(index);
 
             for bgid in (0..self.buddies.len())

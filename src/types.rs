@@ -254,6 +254,7 @@ impl Config for std::fs::File {
             .map_err(|_| FsError::IoError)
             .map(|_| b)
     }
+
     fn write_bytes<const N: usize>(
         &self,
         ofs: usize,
@@ -271,13 +272,26 @@ impl Config for std::fs::File {
         bufs: &[&Self::Buffer<N>],
     ) -> Result<(), FsError> {
         for buf in bufs {
-            self.write_bytes(ofs, buf)?;
+            use std::os::unix::fs::FileExt;
+            self.write_at(buf.as_ref(), ofs as u64)
+                .map_err(|_| FsError::IoError)?;
             ofs += buf.as_ref().len();
         }
         self.sync_data().map_err(|_| FsError::IoError)?;
         Ok(())
     }
-
+    fn write_bios<const N: usize>(
+        &self,
+        bio: Vec<(usize, Self::Buffer<N>)>,
+    ) -> Result<(), FsError> {
+        for (ofs, buf) in bio.into_iter() {
+            use std::os::unix::fs::FileExt;
+            self.write_at(buf.as_ref(), ofs as u64)
+                .map_err(|_| FsError::IoError)
+                .map(|_| ())?;
+        }
+        self.sync_data().map_err(|_| FsError::IoError)
+    }
     fn total_size(&self) -> usize {
         use std::io::{Seek, SeekFrom};
         use std::os::unix::fs::MetadataExt;
@@ -287,6 +301,41 @@ impl Config for std::fs::File {
             meta.len() as usize
         } else {
             self.try_clone().unwrap().seek(SeekFrom::End(0)).unwrap() as usize
+        }
+    }
+}
+
+#[cfg(all(any(feature = "std", test), target_family = "unix"))]
+pub struct Sample {
+    x: &'static str,
+    v: Option<std::time::Instant>,
+    r: Vec<std::time::Duration>,
+}
+#[cfg(all(any(feature = "std", test), target_family = "unix"))]
+impl Sample {
+    pub const fn new(x: &'static str) -> Self {
+        Self {
+            x,
+            v: None,
+            r: Vec::new(),
+        }
+    }
+
+    pub fn start(&mut self) {
+        self.v = Some(std::time::Instant::now())
+    }
+    pub fn end(&mut self) {
+        self.r.push(self.v.take().unwrap().elapsed())
+    }
+    pub fn summary(&mut self) {
+        if self.r.len() > (10737418240 / 4096 / 2 - 10) {
+            println!(
+                "{}: min: {:?} | max: {:?} | avg: {:?}",
+                self.x,
+                self.r.iter().min(),
+                self.r.iter().max(),
+                self.r.iter().sum::<std::time::Duration>() / (self.r.len() as u32)
+            )
         }
     }
 }
