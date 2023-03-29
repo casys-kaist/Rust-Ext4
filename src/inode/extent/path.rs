@@ -181,7 +181,7 @@ where
     }
 
     #[inline]
-    pub(super) fn get_leaf(&self) -> Option<Leaf> {
+    pub(super) fn get_leaf(&mut self) -> Option<Leaf> {
         #[cfg(feature = "extent_cache")]
         let c = self.cache.clone();
         #[cfg(not(feature = "extent_cache"))]
@@ -348,7 +348,7 @@ where
     }
 
     fn insert_leaf(&mut self, new: Leaf) -> Result<Option<Leaf>, FsError> {
-        let leaf = self.get_leaf().cloned();
+        let leaf = self.get_leaf();
 
         if leaf.as_ref().map(|l| l.block == new.block).unwrap_or(false) {
             return Err(FsError::InvalidFs("Extent tree is corrupted"));
