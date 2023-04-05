@@ -82,7 +82,7 @@
 //! [`str`]: ../../std/ffi/struct.str.html
 
 #![no_std]
-#![feature(extend_one, toowned_clone_into)]
+#![feature(extend_one)]
 
 extern crate alloc;
 

@@ -346,7 +346,14 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> core::fmt::Debug
     for Node<'a, 'b, C, BLK_SIZE, MUT>
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Node")
+        let mut d = f.debug_struct("Node");
+        d.field("entries_cnt", &self.get_entries_cnt())
+            .field("max_entries_cnt", &self.get_max_entries_cnt())
+            .field("depth", &self.get_depth());
+        for i in 0..self.get_entries_cnt() {
+            d.field(&alloc::format!("#{}", i), &self.get(i as usize));
+        }
+        d.finish()
     }
 }
 
@@ -437,7 +444,7 @@ impl<C: Config> ExtentHeader for ExtentTree<C> {
                 Some(Entry::Internal(Internal {
                     block: FileBlockNumber(rw.read_u32(12 * index)),
                     next_node: LogicalBlockNumber(merge_u32(
-                        rw.read_u16(12 * index + 8) as u32,
+                        rw.read_u32(12 * index + 8),
                         rw.read_u32(12 * index + 4),
                     )),
                 }))
@@ -475,7 +482,8 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> ExtentHeader
             if self.get_depth() == 0 {
                 let (len, is_init) = {
                     let v = rw.read_u16(12 + 12 * index + 4);
-                    (v & 0x7fff, v <= 0x8000)
+                    let is_init = v <= 0x8000;
+                    (if is_init { v } else { v - 0x8000 }, is_init)
                 };
                 Some(Entry::Leaf(Leaf {
                     block: FileBlockNumber(rw.read_u32(12 + 12 * index)),

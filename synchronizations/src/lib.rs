@@ -14,7 +14,6 @@
 
 //! no_std generic implementations of the synchromization primitives.
 #![no_std]
-#![feature(const_fn_trait_bound)]
 
 pub mod rwlock;
 pub mod simple_lock;

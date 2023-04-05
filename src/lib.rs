@@ -18,7 +18,7 @@
 
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 #![deny(unsafe_code)]
-#![feature(array_chunks, generic_associated_types, min_specialization)]
+#![feature(array_chunks, min_specialization)]
 
 #[macro_use]
 mod prelude;

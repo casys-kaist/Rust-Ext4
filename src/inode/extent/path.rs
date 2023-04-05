@@ -26,9 +26,73 @@ where
 {
     ino: InodeNumber,
     pub(super) root: (T, Option<usize>),
-    pub(super) leafs: Vec<(Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)>,
-    #[cfg(feature = "extent_cache")]
+    pub(super) leafs: Leafs<'a, 'b, C, BLK_SIZE, MUT>,
     pub(super) cache: Option<Leaf>,
+}
+
+pub struct Leafs<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> {
+    size: usize,
+    arr: [Option<(Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)>; 5],
+}
+
+impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> Leafs<'a, 'b, C, BLK_SIZE, MUT> {
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            size: 0,
+            arr: [None, None, None, None, None],
+        }
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.size
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
+
+    #[inline]
+    pub fn push(&mut self, v: (Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)) {
+        debug_assert!(self.size < 5);
+        self.arr[self.size] = Some(v);
+        self.size += 1;
+    }
+
+    #[inline]
+    pub fn pop(&mut self) -> Option<(Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)> {
+        if self.size == 0 {
+            return None;
+        } else {
+            self.size -= 1;
+            self.arr[self.size].take()
+        }
+    }
+
+    #[inline]
+    pub fn last(&mut self) -> Option<&(Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)> {
+        self.get(self.size - 1)
+    }
+
+    #[inline]
+    pub fn get_mut(
+        &mut self,
+        i: usize,
+    ) -> Option<&mut (Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)> {
+        self.arr.get_mut(i).and_then(|n| n.as_mut())
+    }
+
+    #[inline]
+    pub fn get(&self, i: usize) -> Option<&(Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)> {
+        self.arr.get(i).and_then(|n| n.as_ref())
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.size = 0
+    }
 }
 
 enum PathEntry<'a, 'b, 'c, T, C: Config, const BLK_SIZE: usize, const MUT: bool>
@@ -71,11 +135,10 @@ where
 {
     #[inline]
     pub fn empty(ino: InodeNumber, t: T) -> Self {
-        let leafs = Vec::with_capacity(t.get_depth() as usize);
         Self {
             ino,
             root: (t, None),
-            leafs,
+            leafs: Leafs::new(),
             #[cfg(feature = "extent_cache")]
             cache: None,
         }
@@ -118,7 +181,7 @@ where
     }
 
     #[inline]
-    pub(super) fn get_leaf(&self) -> Option<Leaf> {
+    pub(super) fn get_leaf(&mut self) -> Option<Leaf> {
         #[cfg(feature = "extent_cache")]
         let c = self.cache.clone();
         #[cfg(not(feature = "extent_cache"))]
@@ -155,7 +218,7 @@ where
         root.1 = root_index;
         let mut last_node = root_index.and_then(|idx| root.0.get(idx));
 
-        for _ in (0..root.0.get_depth()).rev() {
+        for _ in 0..root.0.get_depth() {
             if let Some(ext) = last_node.take() {
                 let node = fs
                     .blocks
@@ -168,6 +231,7 @@ where
                 break;
             }
         }
+
         Ok(())
     }
 }
@@ -450,7 +514,7 @@ where
             .enumerate()
             .map(|(d, hdr_b)| {
                 // Leaf.
-                dispatch_entry_mut!(self.get_mut(d + at).unwrap(), |ext, idx| {
+                dispatch_entry_mut!(self.get_mut(d + at).unwrap(), |ext, _idx| {
                     // Leaf node.
                     if d + at == depth {
                         {
@@ -463,6 +527,7 @@ where
                             rw.write_u16(6, ext.get_depth());
                         }
 
+                        /*
                         let mut node = Node::from_bytes(hdr_b).unwrap();
                         let base = idx.unwrap();
                         let move_amount = ext.get_entries_cnt() as usize - base - 1;
@@ -472,6 +537,8 @@ where
                         }
                         ext.set_entries_cnt(base as u16);
                         node.into_inner()
+                        */
+                        Node::from_bytes(hdr_b).unwrap().into_inner()
                     } else {
                         todo!()
                     }

@@ -104,7 +104,7 @@ fn do_create<P: AsRef<Path>, const BLK_SIZE: usize>(
     pathname: P,
     ft: FileType,
 ) -> Result<(), FsError> {
-    let name = pathname.as_ref().file_name().ok_or(FsError::Invalid)?;
+    let name = pathname.as_ref().file_name().ok_or(FsError::NoEntry)?;
     let fs = dir.get_inode().fs.upgrade().unwrap();
     let tx = fs.open_transaction();
     if let Some(n) = pathname.as_ref().parent() {
@@ -136,14 +136,20 @@ pub fn unlinkat<P: AsRef<Path>, const BLK_SIZE: usize>(
     dir: &Directory<BLK_SIZE>,
     pathname: P,
 ) -> Result<(), FsError> {
-    let name = pathname.as_ref().file_name().ok_or(FsError::Invalid)?;
+    let name = pathname.as_ref().file_name().ok_or(FsError::Busy)?;
     let fs = dir.get_inode().fs.upgrade().unwrap();
     let tx = fs.open_transaction();
     if let Some(n) = pathname.as_ref().parent() {
-        openat(dir, n)?
+        let parent = openat(dir, n)?
             .get_directory()
-            .ok_or(FsError::NotDirectory)?
-            .remove_entry(name, &tx)
+            .ok_or(FsError::NotDirectory)?;
+        let entry = openat(&parent, name)?;
+        if let Some(dir) = entry.get_directory() {
+            if dir.has_child()? {
+                return Err(FsError::NotEmpty);
+            }
+        }
+        parent.remove_entry(name, &tx)
     } else {
         dir.remove_entry(name, &tx)
     }
