@@ -444,7 +444,7 @@ impl<C: Config> ExtentHeader for ExtentTree<C> {
                 Some(Entry::Internal(Internal {
                     block: FileBlockNumber(rw.read_u32(12 * index)),
                     next_node: LogicalBlockNumber(merge_u32(
-                        rw.read_u32(12 * index + 8),
+                        rw.read_u16(12 * index + 8) as u32,
                         rw.read_u32(12 * index + 4),
                     )),
                 }))
