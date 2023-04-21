@@ -366,41 +366,38 @@ macro_rules! dispatch_cursor_last_mut {
 
 pub enum IBlock<C: Config> {
     AddressingMode(InodeAddressingMode<C>),
-    InlineData([u32; 15]),
 }
 
 impl<C: Config> IBlock<C> {
     pub fn as_addressing_mode(&self) -> &InodeAddressingMode<C> {
         match self {
             IBlock::AddressingMode(addresses) => addresses,
-            IBlock::InlineData(_) => panic!("Inode does not have addressing info"),
         }
     }
 
     pub fn as_addressing_mode_mut(&mut self) -> &mut InodeAddressingMode<C> {
         match self {
             IBlock::AddressingMode(addresses) => addresses,
-            IBlock::InlineData(_) => panic!("Inode does not have addressing info"),
         }
     }
 
     fn as_addressing_mode_raw(&self) -> RawInodeAddressingMode {
         match self {
             IBlock::AddressingMode(addresses) => addresses.as_raw(),
-            IBlock::InlineData(_) => panic!("Inode does not have addressing info"),
         }
     }
 
     pub fn as_bytes(&self) -> [u8; 60] {
-        match self {
-            IBlock::AddressingMode(_) => panic!("Cannot handle addresses as inline data"),
-            IBlock::InlineData(data) => {
+        let IBlock::AddressingMode(mode) = self;
+        match mode {
+            InodeAddressingMode::Legacy(Legacy { addresses }) => {
                 let mut res = [0; 60];
                 for i in 0..15 {
-                    res[4 * i..][..4].copy_from_slice(&data[i].to_le_bytes());
+                    res[4 * i..][..4].copy_from_slice(&addresses[i].to_le_bytes());
                 }
                 res
             }
+            InodeAddressingMode::Extent(_) => panic!("Cannot handle addresses as inline data"),
         }
     }
 }
@@ -482,11 +479,7 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
                 ));
             }
 
-            let addresses = if let Some(FileType::Symlink) = type_ {
-                IBlock::InlineData(raw_inode.get_inline_data())
-            } else {
-                IBlock::AddressingMode(raw_inode.get_addressing_mode(fs))
-            };
+            let addresses = IBlock::AddressingMode(raw_inode.get_addressing_mode(fs));
 
             Ok(Inode {
                 fs: Arc::downgrade(fs),
