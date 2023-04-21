@@ -387,7 +387,7 @@ impl<C: Config> IBlock<C> {
         }
     }
 
-    pub fn as_bytes(&self) -> [u8; 60] {
+    pub fn as_inline_data(&self) -> [u8; 60] {
         let IBlock::AddressingMode(mode) = self;
         match mode {
             InodeAddressingMode::Legacy(Legacy { addresses }) => {

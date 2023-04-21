@@ -163,7 +163,7 @@ impl<C: Config, const BLK_SIZE: usize> Symlink<C, BLK_SIZE> {
             .rw
             .read()
             .addresses
-            .as_bytes()
+            .as_inline_data()
             .iter()
             .filter_map(|c| if c > &0 { Some(*c as char) } else { None })
             .collect::<alloc::string::String>()
