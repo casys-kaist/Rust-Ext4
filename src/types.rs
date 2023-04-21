@@ -329,12 +329,15 @@ impl Config for std::fs::File {
 }
 
 #[cfg(all(any(feature = "std", test), target_family = "unix"))]
+#[allow(dead_code)]
 pub struct Sample {
     x: &'static str,
     v: Option<std::time::Instant>,
     r: Vec<std::time::Duration>,
 }
+
 #[cfg(all(any(feature = "std", test), target_family = "unix"))]
+#[allow(dead_code)]
 impl Sample {
     pub const fn new(x: &'static str) -> Self {
         Self {

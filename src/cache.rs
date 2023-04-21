@@ -79,6 +79,7 @@ where
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn flush(&self) {
         *self.inner.write() = HashMap::new();
     }
