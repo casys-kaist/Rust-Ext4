@@ -131,27 +131,6 @@ where
     }
 
     #[inline]
-    pub(crate) fn get_inline_data(&mut self) -> [u32; 15] {
-        [
-            self.rw.read_u32(0x28),
-            self.rw.read_u32(0x2c),
-            self.rw.read_u32(0x30),
-            self.rw.read_u32(0x34),
-            self.rw.read_u32(0x38),
-            self.rw.read_u32(0x3c),
-            self.rw.read_u32(0x40),
-            self.rw.read_u32(0x44),
-            self.rw.read_u32(0x48),
-            self.rw.read_u32(0x4c),
-            self.rw.read_u32(0x50),
-            self.rw.read_u32(0x54),
-            self.rw.read_u32(0x58),
-            self.rw.read_u32(0x5c),
-            self.rw.read_u32(0x60),
-        ]
-    }
-
-    #[inline]
     pub(super) fn checksum(&mut self) -> CompoundAccessorU32<T, 0x7c, 0x82> {
         let use_hi = self.rw.inner().as_ref().len() > EXT4_GOOD_OLD_INODE_SIZE;
         CompoundAccessorU32::new(&mut self.rw, use_hi)
