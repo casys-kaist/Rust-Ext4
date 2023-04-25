@@ -39,12 +39,13 @@ mod file;
 mod filesystem;
 mod hasher;
 mod superblock;
+mod symlink;
 mod transaction;
 mod types;
 #[allow(dead_code)]
 mod utils;
 
-pub use crate::{directory::Directory, file::File, filesystem::FileSystem};
+pub use crate::{directory::Directory, file::File, filesystem::FileSystem, symlink::Symlink};
 use alloc::sync::Arc;
 pub use fs_core::{FileType, FsError, InodeMode};
 pub use inode::{AddressingOutput, Inode};

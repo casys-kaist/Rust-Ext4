@@ -22,8 +22,8 @@ use crate::directory::Directory;
 use crate::file::File;
 use crate::filesystem::FileSystem;
 use crate::superblock::Ext4FeatureIncompatible;
+use crate::symlink::Symlink;
 use crate::transaction::Transaction;
-use crate::types::Symlink;
 use crate::{
     Config, FileBlockNumber, FileType, FsError, FsObject, InodeMode, InodeNumber,
     LogicalBlockNumber, RwLock,
@@ -201,7 +201,7 @@ impl<C: Config> InodeAddressingMode<C> {
         }
     }
 
-    pub fn as_inline_data(&self) -> [u8; 60] {
+    pub fn to_inline_data(&self) -> [u8; 60] {
         match self {
             InodeAddressingMode::Legacy(Legacy { addresses }) => {
                 let mut res = [0; 60];

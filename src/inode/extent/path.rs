@@ -64,7 +64,7 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> Leafs<'a, 'b, C,
     #[inline]
     pub fn pop(&mut self) -> Option<(Node<'a, 'b, C, BLK_SIZE, MUT>, Option<usize>)> {
         if self.size == 0 {
-            return None;
+            None
         } else {
             self.size -= 1;
             self.arr[self.size].take()
