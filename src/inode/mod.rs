@@ -23,6 +23,7 @@ use crate::file::File;
 use crate::filesystem::FileSystem;
 use crate::superblock::Ext4FeatureIncompatible;
 use crate::transaction::Transaction;
+use crate::types::Symlink;
 use crate::{
     Config, FileBlockNumber, FileType, FsError, FsObject, InodeMode, InodeNumber,
     LogicalBlockNumber, RwLock,
@@ -197,6 +198,19 @@ impl<C: Config> InodeAddressingMode<C> {
                 depth: tree.depth,
                 b: tree.b,
             },
+        }
+    }
+
+    pub fn as_inline_data(&self) -> [u8; 60] {
+        match self {
+            InodeAddressingMode::Legacy(Legacy { addresses }) => {
+                let mut res = [0; 60];
+                for i in 0..15 {
+                    res[4 * i..][..4].copy_from_slice(&addresses[i].to_le_bytes());
+                }
+                res
+            }
+            InodeAddressingMode::Extent(_) => panic!("Cannot handle addresses as inline data"),
         }
     }
 }
@@ -440,6 +454,8 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
                 ));
             }
 
+            let addresses = raw_inode.get_addressing_mode(fs);
+
             Ok(Inode {
                 fs: Arc::downgrade(fs),
                 ino,
@@ -451,7 +467,7 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
                     size: raw_inode.size(fs).get(),
                     links_count: raw_inode.links_count().get(),
                     mode: InodeMode::from_bits_truncate(raw_inode.mode(fs).get()),
-                    addresses: raw_inode.get_addressing_mode(fs),
+                    addresses,
                 }),
             })
         } else {
@@ -479,6 +495,10 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
 
         if matches!(ftype, FileType::Directory) {
             flags |= InodeFlag::INDEX;
+        }
+
+        if matches!(ftype, FileType::Symlink) {
+            todo!("Currently not support symbolic link creation");
         }
 
         Inode {
@@ -537,6 +557,7 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
         match self.ftype {
             FileType::RegularFile => FsObject::File(File { inode: self }),
             FileType::Directory => FsObject::Directory(Directory { inode: self }),
+            FileType::Symlink => FsObject::Symlink(Symlink { inode: self }),
             _ => todo!("{:?}", self.ftype),
         }
     }
