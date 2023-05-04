@@ -130,6 +130,7 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
         Ok(())
     }
 
+    /// Read `len` logical blocks starting from ofs.
     #[inline]
     pub fn read_slices<B: Extend<C::Buffer<4096>>>(
         &mut self,

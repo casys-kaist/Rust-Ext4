@@ -27,6 +27,7 @@ where
     ino: InodeNumber,
     pub(super) root: (T, Option<usize>),
     pub(super) leafs: Leafs<'a, 'b, C, BLK_SIZE, MUT>,
+    #[cfg(feature = "extent_cache")]
     pub(super) cache: Option<Leaf>,
 }
 
@@ -230,6 +231,11 @@ where
             } else {
                 break;
             }
+        }
+
+        #[cfg(feature = "extent_cache")]
+        {
+            self.cache = None;
         }
 
         Ok(())

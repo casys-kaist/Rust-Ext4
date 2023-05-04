@@ -45,6 +45,10 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
         &mut self.blocks.conf
     }
 
+    pub fn into_inner(self) -> C {
+        self.blocks.conf
+    }
+
     #[inline]
     pub fn get_inode_as_fs_object(
         self: &Arc<Self>,

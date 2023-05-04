@@ -182,7 +182,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
             ((fs.sb.block_desc_size * fs.sb.bg_count as usize + BLK_SIZE - 1) / BLK_SIZE) as u64;
         let inode_blocks = (((fs.sb.inodes_per_group as usize) * fs.sb.inode_size + BLK_SIZE - 1)
             / BLK_SIZE) as u64;
-
+        let mut nflags = flags;
         if flags.contains(BlockGroupFlag::BLOCK_UNINIT) {
             let bref = fs
                 .blocks
@@ -203,6 +203,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
             // Set end of block bitmap. kill 1) unusable 2) padding.
             block_bitmap
                 .set_bitmap(fs.sb.blocks_per_group as usize - block_bitmap_pad_back..BLK_SIZE * 8);
+            nflags.remove(BlockGroupFlag::BLOCK_UNINIT);
         }
 
         if flags.contains(BlockGroupFlag::INODE_UNINIT) {
@@ -212,6 +213,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
 
             let mut guard = bref.write();
             ByteRw::new(guard.as_mut()).set_bitmap(fs.sb.inodes_per_group as usize..BLK_SIZE * 8);
+            nflags.remove(BlockGroupFlag::INODE_UNINIT);
             if !flags.contains(BlockGroupFlag::ITABLE_ZEROED) {
                 for lba in (self.inode_table_first_block.0
                     ..self.inode_table_first_block.0 + inode_blocks)
@@ -219,9 +221,10 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
                 {
                     let _ = fs.blocks.get_mut_noload(lba, &tx.collector)?;
                 }
+                nflags.insert(BlockGroupFlag::ITABLE_ZEROED);
             }
         }
-        if !flags.is_empty() {
+        if flags != nflags {
             let mut guard = raw.write();
             let mut manipulator = Manipulator::new(&mut guard.as_mut()[split]);
             manipulator.flags().set(BlockGroupFlag::empty().bits());

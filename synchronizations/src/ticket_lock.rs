@@ -213,6 +213,11 @@ where
     pub unsafe fn steal(&self) -> &mut T {
         &mut *self.data.get()
     }
+
+    #[inline]
+    pub fn into_inner(self) -> T {
+        self.data.into_inner()
+    }
 }
 
 unsafe impl<T, D> Sync for TicketLock<T, D>
