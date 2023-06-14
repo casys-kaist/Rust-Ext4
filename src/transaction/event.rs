@@ -431,7 +431,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             free_blocks_cnt_delta,
             free_inodes_cnt_delta,
             used_dirs_cnt_delta,
-            max_alloc_idx_in_bg: _,
+            max_alloc_idx_in_bg,
         }: BgDelta,
         collector: &Collector,
     ) -> Result<(), FsError> {
@@ -441,15 +441,22 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             let mut guard = bg_arr.write();
             let mut manipulator =
                 block_group::Manipulator::new(&mut guard[off..off + fs.sb.block_desc_size]);
-            // TODO: itable_unused.
-            // if max_alloc_idx_in_bg >=
-            // if idx_in_bg as u32 >= fs.sb.get_inodes_in_bg(bgid) -
-            // itable_unused {     itable_unused =
-            // fs.sb.get_inodes_in_bg(bgid) - idx_in_bg - 1
-            // }
-            // if fs.sb.features_readonly.contains(Ext4FeatureReadOnly::
-            // METADATA_CSUM) { fill_csum() } if is_dir {
-            // bg.inc_used_dir() };
+            if let Some(idx_in_bg) = max_alloc_idx_in_bg {
+                let bgs_count = ((fs.sb.blocks_count - (fs.sb.first_data_block as u64)
+                    + (fs.sb.blocks_per_group as u64)
+                    - 1)
+                    / (fs.sb.blocks_per_group as u64)) as u32;
+                let inodes_in_bg = if bgs_count - 1 == bgid.0 {
+                    fs.sb.inodes_count - fs.sb.inodes_per_group * (bgs_count - 1)
+                } else {
+                    fs.sb.inodes_per_group
+                };
+                if idx_in_bg >= inodes_in_bg - manipulator.itable_unused().get() {
+                    manipulator
+                        .itable_unused()
+                        .set(inodes_in_bg - idx_in_bg - 1);
+                }
+            }
 
             let cnt = manipulator.free_blocks_count().get() as i64 + free_blocks_cnt_delta;
             manipulator.free_blocks_count().set(cnt.try_into().unwrap());

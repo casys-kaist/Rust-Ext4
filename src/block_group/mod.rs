@@ -52,9 +52,6 @@ pub struct BlockGroup<const BLK_SIZE: usize> {
     // Rw
     free_blocks_count: AtomicU32,
     free_inodes_count: AtomicU32,
-
-    // FIXME
-    _itable_unused: AtomicU32,
 }
 
 impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
@@ -162,8 +159,6 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
 
             free_blocks_count: AtomicU32::new(manipulator.free_blocks_count().get()),
             free_inodes_count: AtomicU32::new(manipulator.free_inodes_count().get()),
-
-            _itable_unused: AtomicU32::new(manipulator.itable_unused().get()),
         };
         drop(guard);
         bgroup.verify(raw, split, fs, flag, csum, tx)

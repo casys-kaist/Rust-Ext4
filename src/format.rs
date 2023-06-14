@@ -54,7 +54,7 @@ impl<'a> FormatAux<'a> {
         let inodes_per_group = {
             // round up to 8.
             let tmp: u32 = (blocks_cnt / block_group / 4).try_into().unwrap();
-            (tmp + 7) / 8 * 8
+            (tmp + 15) / 16 * 16
         };
         let inodes_cnt = inodes_per_group.checked_mul(block_group as u32).unwrap();
 
@@ -240,6 +240,13 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             bg.free_blocks_count().set(free_blocks);
             bg.free_inodes_count().set(free_inodes);
             bg.used_dirs_count().set(0);
+            bg.itable_unused().set(
+                if bgs_count - 1 == bgid.0 {
+                    sb.inodes_count - sb.inodes_per_group * (bgs_count - 1)
+                } else {
+                    sb.inodes_per_group
+                } - 1,
+            );
             if is_lazy_init_bg {
                 bg.flags()
                     .set((BlockGroupFlag::INODE_UNINIT | BlockGroupFlag::BLOCK_UNINIT).bits());

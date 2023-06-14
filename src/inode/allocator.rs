@@ -152,7 +152,12 @@ impl<C: Config> Allocator<C> {
     ) -> Result<(), FsError> {
         let (bgid, ofs) = ino.into_bgid_index(&fs.sb);
         let guard = fs.get_block_group(bgid)?;
+        let (_group, _mask) = (ofs >> 3, 1 << (ofs & 7));
         let bg = guard.as_ref().unwrap();
+        debug_assert!(
+            self.bitmap(bgid, fs).unwrap().as_ref().unwrap()[_group].load(Ordering::SeqCst) & _mask
+                > 0
+        );
         trans.inode_deallocation_on_bg(ino, bgid, bg.inode_bitmap_lba, ofs, de);
         trans.free_inodes_count_inc_on_sb();
         Ok(())
