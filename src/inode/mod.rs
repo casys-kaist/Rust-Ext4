@@ -547,8 +547,12 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
 
     #[inline]
     pub fn set_size(&self, size: u64, tx: &Transaction) {
-        self.rw.write().size = size;
-        tx.inode_set_size(self.ino, size, self.rw.read().addresses.as_raw());
+        let mut guard = self.rw.write();
+        if guard.size != size {
+            guard.size = size;
+            drop(guard);
+            tx.inode_set_size(self.ino, size, self.rw.read().addresses.as_raw());
+        }
     }
 
     // FIXME: update path

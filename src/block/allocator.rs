@@ -177,7 +177,7 @@ where
     pub fn deallocate<C: Config, const BLK_SIZE: usize>(
         &self,
         ino: InodeNumber,
-        lba: LogicalBlockNumber,
+        mut lba: LogicalBlockNumber,
         mut size: usize,
         fs: &FileSystem<C, BLK_SIZE>,
         trans: &Transaction,
@@ -191,6 +191,7 @@ where
             let count = core::cmp::min(bg.blocks_count as usize - ofs, size);
             trans.block_deallocation_on_bg(ino, bgid, bg.block_bitmap_lba, ofs, count);
             size -= count;
+            lba = lba + (count as u64);
         }
         Ok(())
     }

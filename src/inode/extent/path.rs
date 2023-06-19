@@ -652,6 +652,10 @@ where
                 break;
             }
         }
+        #[cfg(feature = "extent_cache")]
+        {
+            self.cache = None;
+        }
         Ok(())
     }
 
