@@ -706,13 +706,14 @@ where
     ) -> Result<(), FsError> {
         let orig_len = self.len() as u16;
         let mut len = self.len() as u16;
+        let ino = self.ino;
         loop {
             let idx = dispatch_entry!(self.last(), |_n, idx| *idx);
             match idx {
                 Some(0) if len != 1 => {
-                    let (p_node, _) = self.leafs.pop().unwrap();
                     len -= 1;
-                    dispatch_entry!(self.last(), |node, idx| {
+                    let (p_node, _) = self.leafs.pop().unwrap();
+                    dispatch_entry_mut!(self.last_mut(), |node, idx| {
                         // cleanup
                         if p_node.get_entries_cnt() == 0 {
                             assert_eq!(
@@ -720,9 +721,15 @@ where
                                 node.get_entries_cnt() as usize
                             );
 
+                            let new_count = node.get_entries_cnt() - 1;
                             let lba = p_node.into_inner().lba();
                             assert_eq!(node.get(idx.unwrap()).unwrap().next_node().unwrap(), lba);
-                            fs.blocks.deallocate(self.ino, lba, 1, fs, tx)?;
+                            fs.blocks.deallocate(ino, lba, 1, fs, tx)?;
+
+                            node.set_entries_cnt(new_count);
+                            if new_count != 0 {
+                                break;
+                            }
                         }
                     });
                 }

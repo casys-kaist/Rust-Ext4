@@ -154,7 +154,7 @@ impl<C: Config> Allocator<C> {
         let guard = fs.get_block_group(bgid)?;
         let (_group, _mask) = (ofs >> 3, 1 << (ofs & 7));
         let bg = guard.as_ref().unwrap();
-        debug_assert!(
+        assert!(
             self.bitmap(bgid, fs).unwrap().as_ref().unwrap()[_group].load(Ordering::SeqCst) & _mask
                 > 0
         );

@@ -31,9 +31,9 @@ where
     /// Prehook that runs before try acquiring the lock.
     fn prehook(&self) -> Self::HookAux;
     /// Hook that runs after acquire the lock.
-    fn acquire_hook(&self, loc: &core::panic::Location<'static>);
+    fn acquire_hook(&self, loc: &'static core::panic::Location<'static>);
     /// Hook that runs after releasing the lock.
-    fn release_hook(&self, loc: &core::panic::Location<'static>);
+    fn release_hook(&self, loc: &'static core::panic::Location<'static>);
     /// Actions for sleeping.
     fn sleeping(&self, locked: &AtomicU32, ticket: u32);
     /// Actions for waking-up.
