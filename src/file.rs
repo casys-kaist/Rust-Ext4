@@ -178,6 +178,28 @@ impl<C: Config, const BLK_SIZE: usize> File<C, BLK_SIZE> {
 
         Ok(())
     }
+
+    /// Truncate file into size of until. Return truncated size of file.
+    #[inline]
+    pub fn truncate(&self, until: usize) -> Result<usize, FsError> {
+        let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
+        let tx = Transaction::default();
+
+        let target = (until + BLK_SIZE) & !(BLK_SIZE - 1);
+
+        dispatch_cursor_mut!(
+            self.inode,
+            &fs,
+            FileBlockNumber(target as u32),
+            &tx,
+            |mut cursor| {
+                cursor.remove_after()?;
+            }
+        );
+        self.set_size(until, &tx);
+        tx.done(&fs)?;
+        Ok(self.get_size())
+    }
 }
 
 #[cfg(test)]
