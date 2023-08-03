@@ -173,7 +173,6 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
             match (guard.links_count, inode.ftype) {
                 (1, FileType::RegularFile) => {
                     // if zero, push it to orphan file list.
-                    fs.inodes.remove(ino);
                 }
                 (2, FileType::Directory) => {
                     // As dot point itself, we must dec link twice.

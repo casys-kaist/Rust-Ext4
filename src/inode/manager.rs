@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use super::{allocator::Allocator, Inode};
-use crate::cache::Cache;
+use crate::cache::WeakCache;
 use crate::filesystem::FileSystem;
 use crate::superblock::SuperBlock;
 use crate::transaction::Transaction;
@@ -22,7 +22,7 @@ use alloc::sync::Arc;
 
 pub struct Manager<C: Config, const BLK_SIZE: usize> {
     pub(crate) allocator: Allocator<C>,
-    pub(crate) inodes: Cache<InodeNumber, Inode<C, BLK_SIZE>, C::D>,
+    pub(crate) inodes: WeakCache<InodeNumber, Inode<C, BLK_SIZE>, C::D>,
 }
 
 type InodeAllocationResult<C, const BLK_SIZE: usize> = (InodeNumber, Arc<Inode<C, BLK_SIZE>>);
@@ -32,7 +32,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
     pub fn new(sb: &SuperBlock<C, BLK_SIZE>) -> Self {
         Self {
             allocator: Allocator::new(sb.bg_count as usize),
-            inodes: Cache::new(),
+            inodes: WeakCache::new(),
         }
     }
 
@@ -70,7 +70,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
     }
 
     pub fn remove(&self, ino: InodeNumber) {
-        self.inodes.take(&ino).unwrap();
+        self.inodes.take(&ino)
     }
 
     pub fn get(
