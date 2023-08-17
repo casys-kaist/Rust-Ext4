@@ -91,6 +91,7 @@ where
     D: Dreamer,
 {
     /// Creates a new spin lock in an unlocked state ready for use.
+    #[inline(always)]
     pub fn new(data: T) -> SimpleLock<T, D> {
         SimpleLock {
             locked: AtomicBool::new(false),
@@ -99,7 +100,6 @@ where
         }
     }
 
-    #[inline]
     #[doc(hidden)]
     fn acquire(&self) {
         loop {
@@ -125,7 +125,6 @@ where
     /// The exact behavior on locking a spin lock in the thread which already
     /// holds the lock is left unspecified. However, this function will not
     /// return on the second call (it might panic or deadlock, for example).
-    #[inline]
     #[track_caller]
     pub fn lock(&self) -> SimpleLockGuard<T, D> {
         let h = self.dreamer.prehook();
@@ -160,7 +159,6 @@ where
     /// guard is dropped.
     ///
     /// This function does not block.
-    #[inline]
     #[track_caller]
     pub fn try_lock(&self) -> Result<SimpleLockGuard<T, D>, crate::WouldBlock> {
         let h = self.dreamer.prehook();
@@ -184,7 +182,7 @@ where
     ///
     /// # Safety
     /// This is unsafe.
-    #[inline]
+    #[inline(always)]
     #[allow(clippy::mut_from_ref)]
     pub unsafe fn steal(&self) -> &mut T {
         &mut *self.data.get()

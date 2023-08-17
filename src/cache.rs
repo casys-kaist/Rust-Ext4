@@ -63,24 +63,6 @@ where
     }
 
     #[inline]
-    pub fn get_or_insert_arc<F, E>(&self, k: K, f: F) -> Result<Arc<V>, E>
-    where
-        F: FnOnce(K) -> Result<Arc<V>, E>,
-    {
-        if let Some(v) = self.get(&k) {
-            Ok(v)
-        } else {
-            match self.inner.write().entry(k.clone()) {
-                Entry::Vacant(e) => f(k).map(|v| {
-                    e.insert(Arc::downgrade(&v));
-                    v
-                }),
-                Entry::Occupied(e) => Ok(Weak::upgrade(e.into_mut()).unwrap()),
-            }
-        }
-    }
-
-    #[inline]
     pub fn take(&self, k: &K) {
         self.inner.write().remove(k).unwrap();
     }
@@ -120,21 +102,6 @@ where
     }
 
     #[inline]
-    pub fn get_or_insert<F, E>(&self, k: K, f: F) -> Result<Arc<V>, E>
-    where
-        F: FnOnce(K) -> Result<V, E>,
-    {
-        if let Some(v) = self.get(&k) {
-            Ok(v)
-        } else {
-            match self.inner.write().entry(k.clone()) {
-                Entry::Vacant(e) => f(k).map(|v| e.insert(Arc::new(v)).clone()),
-                Entry::Occupied(e) => Ok(e.into_mut().clone()),
-            }
-        }
-    }
-
-    #[inline]
     pub fn get_or_insert_arc<F, E>(&self, k: K, f: F) -> Result<Arc<V>, E>
     where
         F: FnOnce(K) -> Result<Arc<V>, E>,
@@ -147,11 +114,6 @@ where
                 Entry::Occupied(e) => Ok(e.into_mut().clone()),
             }
         }
-    }
-
-    #[inline]
-    pub fn take(&self, k: &K) -> Option<Arc<V>> {
-        self.inner.write().remove(k)
     }
 
     #[inline]
