@@ -13,8 +13,84 @@
 // limitations under the License.
 
 use crate::{RwDreamer, RwLock};
-use alloc::sync::Arc;
+use alloc::sync::{Arc, Weak};
 use hashbrown::{hash_map::Entry, HashMap};
+
+pub struct WeakCache<K, V, D>
+where
+    K: core::hash::Hash + Eq + Clone + core::fmt::Debug + Send,
+    V: Send + Sync,
+    D: RwDreamer,
+{
+    inner: RwLock<HashMap<K, Weak<V>>, D>,
+}
+
+impl<K, V, D> WeakCache<K, V, D>
+where
+    K: core::hash::Hash + Eq + Clone + core::fmt::Debug + Send,
+    V: Send + Sync,
+    D: RwDreamer,
+{
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            inner: RwLock::new(HashMap::new()),
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, k: &K) -> Option<Arc<V>> {
+        Weak::upgrade(self.inner.read().get(k)?)
+    }
+
+    #[inline]
+    pub fn get_or_insert<F, E>(&self, k: K, f: F) -> Result<Arc<V>, E>
+    where
+        F: FnOnce(K) -> Result<V, E>,
+    {
+        if let Some(v) = self.get(&k) {
+            Ok(v)
+        } else {
+            match self.inner.write().entry(k.clone()) {
+                Entry::Vacant(e) => f(k).map(|v| {
+                    let v = Arc::new(v);
+                    e.insert(Arc::downgrade(&v));
+                    v
+                }),
+                Entry::Occupied(e) => Ok(Weak::upgrade(e.into_mut()).unwrap()),
+            }
+        }
+    }
+
+    #[inline]
+    pub fn get_or_insert_arc<F, E>(&self, k: K, f: F) -> Result<Arc<V>, E>
+    where
+        F: FnOnce(K) -> Result<Arc<V>, E>,
+    {
+        if let Some(v) = self.get(&k) {
+            Ok(v)
+        } else {
+            match self.inner.write().entry(k.clone()) {
+                Entry::Vacant(e) => f(k).map(|v| {
+                    e.insert(Arc::downgrade(&v));
+                    v
+                }),
+                Entry::Occupied(e) => Ok(Weak::upgrade(e.into_mut()).unwrap()),
+            }
+        }
+    }
+
+    #[inline]
+    pub fn take(&self, k: &K) {
+        self.inner.write().remove(k).unwrap();
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn flush(&self) {
+        *self.inner.write() = HashMap::new();
+    }
+}
 
 pub struct Cache<K, V, D>
 where

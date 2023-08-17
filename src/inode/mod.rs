@@ -415,8 +415,8 @@ impl<C: Config, const BLK_SIZE: usize> Drop for Inode<C, BLK_SIZE> {
 
             // Remove inode from orphan list
             fs.sb.remove_orphan(self.ino, &tx);
-
-            tx.done(&fs).unwrap()
+            fs.inodes.remove(self.ino);
+            tx.done(&fs).unwrap();
         }
     }
 }
