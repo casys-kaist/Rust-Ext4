@@ -59,6 +59,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         }
     }
 
+    #[inline]
     pub fn deallocate(
         &self,
         fs: &Arc<FileSystem<C, BLK_SIZE>>,
@@ -69,6 +70,7 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
         self.allocator.deallocate(fs, ino, ftype, tx)
     }
 
+    #[inline]
     pub fn remove(&self, ino: InodeNumber) {
         self.inodes.take(&ino)
     }

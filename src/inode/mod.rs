@@ -399,8 +399,8 @@ pub struct Inode<C: Config, const BLK_SIZE: usize> {
 
 impl<C: Config, const BLK_SIZE: usize> Drop for Inode<C, BLK_SIZE> {
     fn drop(&mut self) {
+        let fs = self.fs.upgrade().unwrap();
         if self.rw.write().links_count == 0 {
-            let fs = self.fs.upgrade().unwrap();
             let tx = fs.open_transaction();
             // Truncate to the zero.
             (|| {
@@ -415,9 +415,9 @@ impl<C: Config, const BLK_SIZE: usize> Drop for Inode<C, BLK_SIZE> {
 
             // Remove inode from orphan list
             fs.sb.remove_orphan(self.ino, &tx);
-            fs.inodes.remove(self.ino);
             tx.done(&fs).unwrap();
         }
+        fs.inodes.remove(self.ino);
     }
 }
 

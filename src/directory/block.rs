@@ -154,6 +154,7 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         while !self.stopped && self.pos + 8 <= BLK_SIZE {
             if let Ok(entry) = self.inner.read_entry_at(self.pos) {
+                assert_ne!(entry.get_entry_len(), 0);
                 self.pos += entry.get_entry_len();
                 if entry.get_inode() != crate::types::InodeNumber(0) {
                     return Some(Ok(entry));

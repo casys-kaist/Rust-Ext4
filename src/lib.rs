@@ -17,7 +17,7 @@
 //! <https://ext4.wiki.kernel.org/index.php/Ext4_Disk_Layout>
 
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
-#![deny(unsafe_code)]
+#![warn(unsafe_code)]
 #![feature(array_chunks, min_specialization)]
 
 #[macro_use]
