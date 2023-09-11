@@ -33,7 +33,7 @@ where
     /// Prehook that runs before try acquiring the lock.
     fn prehook(&self) -> Self::HookAux;
     /// Hook that runs after acquire the lock.
-    fn acquire_hook(&self, hint: Hint, _l: &core::panic::Location<'static>);
+    fn acquire_hook(&self, hint: Hint, disable_dep: bool, _l: &core::panic::Location<'static>);
     /// Hook that runs after releasing the lock.
     fn release_hook(&self, hint: Hint, _l: &core::panic::Location<'static>);
     /// Actions for sleeping.
@@ -152,7 +152,7 @@ where
                 lock.dreamer
                     .release_hook(Hint::Read, core::panic::Location::caller());
                 lock.dreamer
-                    .acquire_hook(Hint::Write, core::panic::Location::caller());
+                    .acquire_hook(Hint::Write, false, core::panic::Location::caller());
                 break RwLockWriteGuard {
                     lock,
                     data: unsafe { &mut *lock.data.get() },
@@ -180,7 +180,7 @@ where
         lock.dreamer
             .release_hook(Hint::Write, core::panic::Location::caller());
         lock.dreamer
-            .acquire_hook(Hint::Read, core::panic::Location::caller());
+            .acquire_hook(Hint::Read, false, core::panic::Location::caller());
         RwLockReadGuard {
             lock,
             data: unsafe { &*lock.data.get() },
@@ -254,7 +254,7 @@ where
         } else {
             let h = self.read_lock();
             self.dreamer
-                .acquire_hook(Hint::Read, core::panic::Location::caller());
+                .acquire_hook(Hint::Read, false, core::panic::Location::caller());
             RwLockReadGuard {
                 lock: self,
                 data: unsafe { &*self.data.get() },
@@ -288,7 +288,7 @@ where
                 .is_ok()
             {
                 self.dreamer
-                    .acquire_hook(Hint::Read, core::panic::Location::caller());
+                    .acquire_hook(Hint::Read, false, core::panic::Location::caller());
                 break Ok(RwLockReadGuard {
                     lock: self,
                     data: unsafe { &*self.data.get() },
@@ -331,7 +331,7 @@ where
         } else {
             let h = self.write_lock();
             self.dreamer
-                .acquire_hook(Hint::Write, core::panic::Location::caller());
+                .acquire_hook(Hint::Write, false, core::panic::Location::caller());
             RwLockWriteGuard {
                 lock: self,
                 data: unsafe { &mut *self.data.get() },
@@ -340,6 +340,25 @@ where
         }
     }
 
+    /// Works same as write in normal case.
+    /// When lock hook exists, it explicitly notify that
+    /// this write lock should not be included to lock-dependency analysis.
+    #[inline]
+    #[track_caller]
+    pub fn write_no_dep(&self) -> RwLockWriteGuard<T, D> {
+        if let Ok(guard) = self.try_write_no_dep() {
+            guard
+        } else {
+            let h = self.write_lock();
+            self.dreamer
+                .acquire_hook(Hint::Write, true, core::panic::Location::caller());
+            RwLockWriteGuard {
+                lock: self,
+                data: unsafe { &mut *self.data.get() },
+                _h: h,
+            }
+        }
+    }
     /// Attempts to lock this rwlock with exclusive write access.
     ///
     /// If the lock could not be acquired at this time, then `Err` is returned.
@@ -369,7 +388,35 @@ where
                 .is_ok()
             {
                 self.dreamer
-                    .acquire_hook(Hint::Write, core::panic::Location::caller());
+                    .acquire_hook(Hint::Write, false, core::panic::Location::caller());
+                break Ok(RwLockWriteGuard {
+                    lock: self,
+                    data: unsafe { &mut *self.data.get() },
+                    _h: h,
+                });
+            }
+        }
+    }
+
+    #[track_caller]
+    pub fn try_write_no_dep(&self) -> Result<RwLockWriteGuard<T, D>, crate::WouldBlock> {
+        loop {
+            let h = self.dreamer.prehook();
+            let prev = self.state.load(Ordering::Relaxed);
+            if prev > 0 {
+                break Err(crate::WouldBlock);
+            } else if self
+                .state
+                .compare_exchange(
+                    prev,
+                    prev | STATE_WRITER_LOCKED,
+                    Ordering::Acquire,
+                    Ordering::Acquire,
+                )
+                .is_ok()
+            {
+                self.dreamer
+                    .acquire_hook(Hint::Write, true, core::panic::Location::caller());
                 break Ok(RwLockWriteGuard {
                     lock: self,
                     data: unsafe { &mut *self.data.get() },

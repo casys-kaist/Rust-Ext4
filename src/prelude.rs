@@ -101,6 +101,13 @@ mod inner {
             }
         }
         #[inline]
+        pub fn write_no_dep(&self) -> RwLockWriteGuard<V, D> {
+            RwLockWriteGuard {
+                inner: self.inner.write().unwrap(),
+                _p: std::marker::PhantomData,
+            }
+        }
+        #[inline]
         pub fn read(&self) -> RwLockReadGuard<V, D> {
             RwLockReadGuard {
                 inner: self.inner.read().unwrap(),
@@ -191,7 +198,7 @@ mod inner {
         fn acquire_hook(
             &self,
             _h: synchronizations::rwlock::Hint,
-
+            _d: bool,
             _l: &core::panic::Location<'static>,
         ) {
             unreachable!()

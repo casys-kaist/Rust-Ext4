@@ -90,7 +90,7 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
             Ok(guard)
         } else {
             drop(guard);
-            let mut guard = self.block_groups[bgid.0 as usize].write();
+            let mut guard = self.block_groups[bgid.0 as usize].write_no_dep();
             if guard.is_none() {
                 let (lba, index) = bgid.into_lba_index(&self.sb);
                 let tx = self.open_transaction();
