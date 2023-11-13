@@ -24,7 +24,7 @@ use crate::utils::ByteRw;
 use crate::{Config, FileType, FsError, InodeNumber, LogicalBlockNumber};
 use bitflags::bitflags;
 
-pub use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+pub use core::sync::atomic::{AtomicU32, Ordering};
 pub(crate) use raw::Manipulator;
 
 bitflags! {

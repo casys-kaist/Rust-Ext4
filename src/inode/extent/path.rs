@@ -425,6 +425,7 @@ where
         })
     }
 
+    /// Grow Extent to one more depth.
     fn grow_extent(
         &mut self,
         ino: InodeNumber,
@@ -520,7 +521,7 @@ where
             .enumerate()
             .map(|(d, hdr_b)| {
                 // Leaf.
-                dispatch_entry_mut!(self.get_mut(d + at).unwrap(), |ext, _idx| {
+                dispatch_entry_mut!(self.get_mut(d + at).unwrap(), |ext, idx| {
                     // Leaf node.
                     if d + at == depth {
                         {
@@ -532,8 +533,21 @@ where
                             rw.write_u16(4, ((BLK_SIZE - 16) / 12) as u16);
                             rw.write_u16(6, ext.get_depth());
                         }
+                        // Move the entries to the newly created path. This is required for the sparse file.
+                        // e.g) Transmute
+                        // Path 0 -> 0
+                        //       [ 0; ...]
+                        //      +--+
+                        //  [1; 3; 4; ...]
+                        //
+                        // to
+                        //
+                        //       [ 0; 1; ...]
+                        //      +--+  |
+                        //  [1; ...] [3; 4; ...]
+                        //     ^
+                        // To insert here.
 
-                        /*
                         let mut node = Node::from_bytes(hdr_b).unwrap();
                         let base = idx.unwrap();
                         let move_amount = ext.get_entries_cnt() as usize - base - 1;
@@ -541,10 +555,8 @@ where
                             node.insert_at(ext.get(base + i + 1).unwrap(), i)
                                 .unwrap_or_else(|_| unreachable!());
                         }
-                        ext.set_entries_cnt(base as u16);
+                        ext.set_entries_cnt(base as u16 + 1);
                         node.into_inner()
-                        */
-                        Node::from_bytes(hdr_b).unwrap().into_inner()
                     } else {
                         todo!()
                     }
