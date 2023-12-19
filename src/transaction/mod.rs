@@ -32,7 +32,7 @@ pub use event::{Event, Events};
 /// Per-operation private data.
 pub struct Transaction {
     pub(crate) events: Events,
-    pub(crate) collector: Collector,
+    pub collector: Collector,
 }
 
 // Remove default.

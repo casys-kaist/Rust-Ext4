@@ -107,6 +107,7 @@ pub enum Event {
     FreeInodesCountIncOnSb,
 }
 
+#[derive(Debug)]
 pub struct Events {
     pub(crate) inner: Option<RefCell<LinkedList<Event>>>,
 }

@@ -110,11 +110,12 @@ impl<
         Ok(false)
     }
 
-    pub fn read_dir(
+    pub fn fill_dir_from(
         &self,
         fs: &FileSystem<C, BLK_SIZE>,
-        pos: usize,
-    ) -> Result<Option<(DirEntry, usize)>, FsError> {
+        mut pos: usize,
+        mut fillfn: impl FnMut(DirEntry, usize) -> bool,
+    ) -> Result<(), FsError> {
         let root_lba = self.get_lba_of_root(fs)?;
         let root = fs.blocks.get(root_lba).and_then(|raw| {
             DirDxRoot::<C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, false>::from_raw_block(
@@ -123,33 +124,43 @@ impl<
                 &self.dir.inode,
             )
         })?;
+        // The `.` entry.
         if pos < 12 {
-            Ok(Some((
+            if !fillfn(
                 DirEntry {
                     path: Path::new(".").to_path_buf(),
                     ino: fs_core::InodeNumber(root.dot().inode.0 as u64),
                     ty: FileType::Directory,
                 },
                 12,
-            )))
-        } else if pos < BLK_SIZE {
-            Ok(Some((
+            ) {
+                return Ok(());
+            }
+            pos = 12;
+        }
+        // The `..` entry.
+        if pos < BLK_SIZE {
+            if !fillfn(
                 DirEntry {
                     path: Path::new("..").to_path_buf(),
                     ino: fs_core::InodeNumber(root.dotdot().inode.0 as u64),
                     ty: FileType::Directory,
                 },
                 BLK_SIZE,
-            )))
-        } else {
-            let (index, offset) = (pos / BLK_SIZE, pos % BLK_SIZE);
-
+            ) {
+                return Ok(());
+            }
+            pos = BLK_SIZE;
+        }
+        // Other entries.
+        let (mut index, mut offset) = (pos / BLK_SIZE, pos % BLK_SIZE);
+        loop {
             let fba = if let Some(en) =
                 HTreeCursor::from_index(&root, index - 1).and_then(|mut cursor| cursor.next())
             {
                 en.block
             } else {
-                return Ok(None);
+                return Ok(());
             };
             if let Some(lba) =
                 dispatch_cursor!(self.dir.inode, fs, fba, |mut c| c.current()).map(|n| {
@@ -164,23 +175,25 @@ impl<
                 let mut iter = dblk.iter();
                 while let Some(en) = iter.next() {
                     if iter.pos() > offset {
-                        if let Ok(en) = en {
-                            return Ok(Some((
-                                DirEntry {
-                                    path: Path::new(en.get_name()).to_path_buf(),
-                                    ino: fs_core::InodeNumber(en.get_inode().0 as u64),
-                                    ty: en
-                                        .get_file_type()
-                                        .map(|n| n.into_file_type())
-                                        .unwrap_or(FileType::Unknown),
-                                },
-                                iter.pos() + index * BLK_SIZE,
-                            )));
+                        let en = en?;
+                        if !fillfn(
+                            DirEntry {
+                                path: Path::new(en.get_name()).to_path_buf(),
+                                ino: fs_core::InodeNumber(en.get_inode().0 as u64),
+                                ty: en
+                                    .get_file_type()
+                                    .map(|n| n.into_file_type())
+                                    .unwrap_or(FileType::Unknown),
+                            },
+                            iter.pos() + index * BLK_SIZE,
+                        ) {
+                            return Ok(());
                         }
                     }
                 }
+                index += 1;
+                offset = 0;
             }
-            Ok(None)
         }
     }
 

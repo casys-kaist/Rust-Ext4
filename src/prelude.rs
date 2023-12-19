@@ -218,6 +218,7 @@ mod inner {
     }
 }
 
+#[allow(unused_imports)]
 pub use inner::*;
 pub use synchronizations::rwlock::Dreamer as RwDreamer;
 pub use synchronizations::ticket_lock::{Dreamer, TicketLock, TicketLockGuard};

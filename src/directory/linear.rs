@@ -57,53 +57,78 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
         });
     }
 
-    pub fn read_dir(
+    pub fn fill_dir_from(
         &self,
         fs: &FileSystem<C, BLK_SIZE>,
         pos: usize,
-    ) -> Result<Option<(DirEntry, usize)>, FsError> {
-        let (index, offset) = (pos / BLK_SIZE, pos % BLK_SIZE);
-
-        if let Some(lba) = dispatch_cursor!(
-            self.dir.inode,
-            fs,
-            FileBlockNumber(index as u32),
-            |mut c| c.current()
-        )
-        .map(|n| {
-            n.get_initialized()
-                .ok_or(FsError::InvalidFs("Uninitialized data block in directory"))
-        }) {
-            let blk = fs.blocks.get(lba?)?;
-            let guard = blk.read();
-            let mut pos = 0;
-            let mut pen: Option<DirectoryEntryDispatch<&[u8]>> = None;
-            let dblk = DirectoryBlock::new(&**guard, fs);
-            for en in dblk.iter() {
-                if pos <= offset {
-                    pen = Some(en?);
-                    pos += pen.as_ref().unwrap().get_entry_len();
-                } else {
-                    break;
+        mut fillfn: impl FnMut(DirEntry, usize) -> bool,
+    ) -> Result<(), FsError> {
+        let (mut index, mut offset) = (pos / BLK_SIZE, pos % BLK_SIZE);
+        loop {
+            if let Some(lba) = dispatch_cursor!(
+                self.dir.inode,
+                fs,
+                FileBlockNumber(index as u32),
+                |mut c| c.current()
+            )
+            .map(|n| {
+                n.get_initialized()
+                    .ok_or(FsError::InvalidFs("Uninitialized data block in directory"))
+            }) {
+                let blk = fs.blocks.get(lba?)?;
+                let guard = blk.read();
+                let mut en_pos = 0;
+                let mut pen: Option<DirectoryEntryDispatch<&[u8]>> = None;
+                let dblk = DirectoryBlock::new(&**guard, fs);
+                let mut iter = dblk.iter();
+                while let Some(en) = iter.next() {
+                    if en_pos <= offset {
+                        pen = Some(en?);
+                        en_pos += pen.as_ref().unwrap().get_entry_len();
+                    } else {
+                        break;
+                    }
                 }
-            }
-            if let Some(pen) = pen {
-                Ok(Some((
-                    DirEntry {
-                        path: Path::new(pen.get_name()).to_path_buf(),
-                        ino: fs_core::InodeNumber(pen.get_inode().0 as u64),
-                        ty: pen
-                            .get_file_type()
-                            .map(|n| n.into_file_type())
-                            .unwrap_or(FileType::Unknown),
-                    },
-                    pos + index * BLK_SIZE,
-                )))
+                // We found the entry for the pos.
+                if let Some(pen) = pen {
+                    if !fillfn(
+                        DirEntry {
+                            path: Path::new(pen.get_name()).to_path_buf(),
+                            ino: fs_core::InodeNumber(pen.get_inode().0 as u64),
+                            ty: pen
+                                .get_file_type()
+                                .map(|n| n.into_file_type())
+                                .unwrap_or(FileType::Unknown),
+                        },
+                        en_pos + index * BLK_SIZE,
+                    ) {
+                        return Ok(());
+                    }
+
+                    for en in iter {
+                        let en = en?;
+                        if !fillfn(
+                            DirEntry {
+                                path: Path::new(en.get_name()).to_path_buf(),
+                                ino: fs_core::InodeNumber(en.get_inode().0 as u64),
+                                ty: en
+                                    .get_file_type()
+                                    .map(|n| n.into_file_type())
+                                    .unwrap_or(FileType::Unknown),
+                            },
+                            en_pos + index * BLK_SIZE,
+                        ) {
+                            return Ok(());
+                        }
+                    }
+                    index += 1;
+                    offset = 0;
+                } else {
+                    return Ok(());
+                }
             } else {
-                Ok(None)
+                return Ok(());
             }
-        } else {
-            Ok(None)
         }
     }
 

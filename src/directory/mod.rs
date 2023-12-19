@@ -83,9 +83,13 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
         dispatch_scheme!(self.get_scheme(&fs), |s| s.has_child(&fs))
     }
 
-    pub fn read_dir(&self, pos: usize) -> Result<Option<(DirEntry, usize)>, FsError> {
+    pub fn fill_dir_from(
+        &self,
+        pos: usize,
+        fillfn: impl FnMut(DirEntry, usize) -> bool,
+    ) -> Result<(), FsError> {
         let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
-        dispatch_scheme!(self.get_scheme(&fs), |s| s.read_dir(&fs, pos))
+        dispatch_scheme!(self.get_scheme(&fs), |s| s.fill_dir_from(&fs, pos, fillfn))
     }
 
     pub fn open_entry(&self, entry: &str) -> Result<FsObject<C, BLK_SIZE>, FsError> {
