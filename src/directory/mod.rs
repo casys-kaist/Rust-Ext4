@@ -87,7 +87,7 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
         &self,
         pos: usize,
         fillfn: impl FnMut(DirEntry, usize) -> bool,
-    ) -> Result<(), FsError> {
+    ) -> Result<usize, FsError> {
         let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
         dispatch_scheme!(self.get_scheme(&fs), |s| s.fill_dir_from(&fs, pos, fillfn))
     }
@@ -214,7 +214,7 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
         entry: &str,
         new_dir: &Self,
         new_entry: &str,
-        tx: &Transaction,
+        tx: Transaction,
     ) -> Result<(), FsError> {
         let fs = Weak::upgrade(&self.inode.fs).ok_or(FsError::Shutdown)?;
         let ino = dispatch_scheme!(self.get_scheme(&fs), |s| s.remove_entry(
@@ -223,7 +223,7 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
             &tx.collector
         ))?;
         // FIXME: One produce entry, and other remove it. Cannot progress.
-        let old = match self.do_remove_entry(new_entry, &fs, tx) {
+        let old = match self.do_remove_entry(new_entry, &fs, &tx) {
             Err(FsError::NoEntry) => None,
             e => Some(e?),
         };
@@ -234,8 +234,9 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
             new_entry,
             inode.ftype,
             ino,
-            tx
+            &tx
         ))?;
+        tx.done(&fs)?;
         drop(old);
         Ok(())
     }

@@ -62,7 +62,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
         fs: &FileSystem<C, BLK_SIZE>,
         pos: usize,
         mut fillfn: impl FnMut(DirEntry, usize) -> bool,
-    ) -> Result<(), FsError> {
+    ) -> Result<usize, FsError> {
         let (mut index, mut offset) = (pos / BLK_SIZE, pos % BLK_SIZE);
         loop {
             if let Some(lba) = dispatch_cursor!(
@@ -100,10 +100,11 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
                                 .map(|n| n.into_file_type())
                                 .unwrap_or(FileType::Unknown),
                         },
-                        en_pos + index * BLK_SIZE,
+                        en_pos + index * BLK_SIZE + pen.get_entry_len(),
                     ) {
-                        return Ok(());
+                        return Ok(en_pos + index * BLK_SIZE);
                     }
+                    en_pos += pen.get_entry_len();
 
                     for en in iter {
                         let en = en?;
@@ -116,18 +117,19 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
                                     .map(|n| n.into_file_type())
                                     .unwrap_or(FileType::Unknown),
                             },
-                            en_pos + index * BLK_SIZE,
+                            en_pos + index * BLK_SIZE + en.get_entry_len(),
                         ) {
-                            return Ok(());
+                            return Ok(en_pos + index * BLK_SIZE);
                         }
+                        en_pos += en.get_entry_len();
                     }
                     index += 1;
                     offset = 0;
                 } else {
-                    return Ok(());
+                    return Ok(en_pos + index * BLK_SIZE);
                 }
             } else {
-                return Ok(());
+                return Ok(index * BLK_SIZE + offset);
             }
         }
     }

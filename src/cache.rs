@@ -57,14 +57,24 @@ where
                     e.insert(Arc::downgrade(&v));
                     v
                 }),
-                Entry::Occupied(e) => Ok(Weak::upgrade(e.into_mut()).unwrap()),
+                Entry::Occupied(mut e) => {
+                    if let Some(e) = Weak::upgrade(e.get()) {
+                        Ok(e)
+                    } else {
+                        f(k).map(|v| {
+                            let v = Arc::new(v);
+                            e.insert(Arc::downgrade(&v));
+                            v
+                        })
+                    }
+                }
             }
         }
     }
 
     #[inline]
     pub fn take(&self, k: &K) {
-        self.inner.write().remove(k).unwrap();
+        self.inner.write().remove(k); // .unwrap();
     }
 
     #[inline]

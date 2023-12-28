@@ -115,7 +115,7 @@ impl<
         fs: &FileSystem<C, BLK_SIZE>,
         mut pos: usize,
         mut fillfn: impl FnMut(DirEntry, usize) -> bool,
-    ) -> Result<(), FsError> {
+    ) -> Result<usize, FsError> {
         let root_lba = self.get_lba_of_root(fs)?;
         let root = fs.blocks.get(root_lba).and_then(|raw| {
             DirDxRoot::<C, BLK_SIZE, R_ENTRIES, N_ENTRIES, HAS_TAIL, false>::from_raw_block(
@@ -134,7 +134,7 @@ impl<
                 },
                 12,
             ) {
-                return Ok(());
+                return Ok(0);
             }
             pos = 12;
         }
@@ -148,7 +148,7 @@ impl<
                 },
                 BLK_SIZE,
             ) {
-                return Ok(());
+                return Ok(12);
             }
             pos = BLK_SIZE;
         }
@@ -160,7 +160,7 @@ impl<
             {
                 en.block
             } else {
-                return Ok(());
+                return Ok(index * BLK_SIZE + offset);
             };
             if let Some(lba) =
                 dispatch_cursor!(self.dir.inode, fs, fba, |mut c| c.current()).map(|n| {
@@ -187,7 +187,7 @@ impl<
                             },
                             iter.pos() + index * BLK_SIZE,
                         ) {
-                            return Ok(());
+                            return Ok(iter.pos() + index * BLK_SIZE);
                         }
                     }
                 }
