@@ -174,7 +174,7 @@ impl<
 
                 let mut iter = dblk.iter();
                 while let Some(en) = iter.next() {
-                    if iter.pos() > offset {
+                    if iter.pos() >= offset {
                         let en = en?;
                         if !fillfn(
                             DirEntry {

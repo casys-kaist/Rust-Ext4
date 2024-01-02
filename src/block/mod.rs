@@ -123,15 +123,19 @@ type ReadOutput<Buffer, D> = Result<Arc<Block<Buffer, D>>, FsError>;
 
 impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
     #[inline]
-    pub fn new(sb: &SuperBlock<C, BLK_SIZE>, conf: C) -> Self {
+    pub fn new(conf: C) -> Self {
         Self {
-            allocator: allocator::Allocator::new(BLK_SIZE, sb.bg_count as usize),
+            allocator: allocator::Allocator::new(BLK_SIZE),
             blocks: Cache::new(),
             conf,
         }
     }
 
-    pub(crate) fn build_buddy(&self, bg: &BlockGroup<BLK_SIZE>) -> Result<(), FsError> {
+    pub(crate) fn build_buddy(
+        &self,
+        bg: &BlockGroup<BLK_SIZE>,
+        sb: &SuperBlock<C, BLK_SIZE>,
+    ) -> Result<(), FsError> {
         let bblock = self.get(bg.block_bitmap_lba)?;
         let bitmap = bblock.read();
         let mut pos = 0;
@@ -144,7 +148,10 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
             let len = find_one(bitmap.as_ref(), first_zero).unwrap_or(bg.blocks_count as usize)
                 - first_zero;
             pos = first_zero + len;
-            self.allocator.push_chunk(first_zero, len, bg.bgid);
+            self.allocator.push_chunk(
+                LogicalBlockNumber::from_bgid_index(bg.bgid, first_zero, sb),
+                len,
+            );
         }
         Ok(())
     }
@@ -261,7 +268,10 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
     ) -> Result<(), FsError> {
         let guard = fs.get_block_group(bgid)?;
         let bg = guard.as_ref().unwrap();
-        self.allocator.push_chunk(ofs, count, bgid);
+        self.allocator.push_chunk(
+            LogicalBlockNumber::from_bgid_index(bgid, ofs, &fs.sb),
+            count,
+        );
         bg.deallocate_blocks(count);
         Ok(())
     }

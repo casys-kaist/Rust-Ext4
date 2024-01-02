@@ -104,7 +104,7 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
                 )?);
                 tx.done(self)?;
                 // We don't need to hold blockgroup blocks, as they are loaded on memory.
-                self.blocks.build_buddy(guard.as_ref().unwrap())?;
+                self.blocks.build_buddy(guard.as_ref().unwrap(), &self.sb)?;
             }
             drop(guard);
             Ok(self.block_groups[bgid.0 as usize].read())
@@ -124,14 +124,18 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
 
     /// Open a file sytem from the device `IO`.
     pub fn new(conf: C, sb: SuperBlock<C, BLK_SIZE>) -> Arc<FileSystem<C, BLK_SIZE>> {
-        let blocks = block::Manager::new(&sb, conf);
+        let blocks = block::Manager::new(conf);
         let inodes = inode::Manager::new(&sb);
         let bg_count = sb.bg_count;
-        Arc::new(FileSystem {
+        let fs = Arc::new(FileSystem {
             sb,
             blocks,
             block_groups: (0..bg_count).map(|_| RwLock::new(None)).collect(),
             inodes,
-        })
+        });
+        for i in 0..bg_count {
+            let _ = fs.get_block_group(BlockGroupId(i));
+        }
+        fs
     }
 }
