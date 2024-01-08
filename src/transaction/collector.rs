@@ -70,16 +70,17 @@ impl Collector {
             is_sb_dirty,
         } = self;
 
-        if is_sb_dirty.load(core::sync::atomic::Ordering::Relaxed) {
-            fs.sb.manipulator.lock().writeback(&fs.blocks.conf)?;
-        }
         let l = modifications.into_inner();
+        let mut bio = alloc::vec::Vec::with_capacity(l.len() + 1);
+        if is_sb_dirty.load(core::sync::atomic::Ordering::Relaxed) {
+            fs.sb.manipulator.lock().writeback(&mut bio);
+        }
 
-        let mut bio = alloc::vec::Vec::with_capacity(l.len());
         for lba in l.into_iter() {
             bio.push(fs.blocks.get_io_request(lba)?);
         }
         fs.blocks.conf.write_bios(bio)?;
+
         for postlude in postludes.into_inner().into_iter() {
             match postlude {
                 PostludeOps::BlockDeallocation { bgid, ofs, count } => {

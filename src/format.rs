@@ -93,7 +93,7 @@ fn make_sb<C: Config, const BLK_SIZE: usize>(
         inodes_per_group,
     }: FormatAux,
 ) -> SuperBlock<C, BLK_SIZE> {
-    let mut sb = superblock::Manipulator::from_bytes(C::Buffer::<1024>::zeroed());
+    let mut sb = superblock::Manipulator::from_bytes(C::Buffer::<BLK_SIZE>::zeroed());
     sb.feature_compat().set(feat_com.bits());
     sb.feature_incompat().set(feat_incom.bits());
     sb.feature_ro_compat().set(feat_ro.bits());

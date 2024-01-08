@@ -12,55 +12,71 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::types::Zero;
 use crate::utils::ByteRw;
 use crate::{Config, FsError};
 
 #[repr(transparent)]
-pub(crate) struct Wrapper<C: Config>(pub C::Buffer<1024>);
+pub(crate) struct Wrapper<C: Config, const N: usize>(pub C::Buffer<N>);
 
-impl<C: Config> core::convert::AsRef<[u8]> for Wrapper<C> {
+impl<C: Config, const N: usize> core::convert::AsRef<[u8]> for Wrapper<C, N> {
     fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
+        if N == 1024 {
+            self.0.as_ref()
+        } else {
+            &self.0.as_ref()[1024..]
+        }
     }
 }
 
-impl<C: Config> core::convert::AsMut<[u8]> for Wrapper<C> {
+impl<C: Config, const N: usize> core::convert::AsMut<[u8]> for Wrapper<C, N> {
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0.as_mut()
+        if N == 1024 {
+            self.0.as_mut()
+        } else {
+            &mut self.0.as_mut()[1024..]
+        }
     }
 }
 
 pub(crate) struct Manipulator<C: Config, const N: usize> {
-    pub rw: ByteRw<Wrapper<C>>,
+    pub rw: ByteRw<Wrapper<C, N>>,
 }
 
 impl<C: Config, const N: usize> Manipulator<C, N> {
     #[inline]
     pub fn from_disk(dev: &C) -> Result<Self, FsError> {
-        let b = if N == 1024 {
-            dev.read_bytes::<1024>(N)?
-        } else {
-            let mut b = C::Buffer::<1024>::zeroed();
-            let o = dev.read_bytes::<N>(0)?;
-            b.as_mut().copy_from_slice(&o[1024..2048]);
-            b
-        };
+        trait Spec<C: Config, const N: usize> {
+            fn new(dev: &C) -> Result<Manipulator<C, N>, FsError>;
+        }
+        struct SpecAdaptor<C: Config, const N: usize>(C);
+        impl<C: Config, const N: usize> Spec<C, N> for SpecAdaptor<C, N> {
+            default fn new(dev: &C) -> Result<Manipulator<C, N>, FsError> {
+                let b = dev.read_bytes::<N>(0)?;
+                Ok(Manipulator {
+                    rw: ByteRw::new(Wrapper(b)),
+                })
+            }
+        }
+        impl<C: Config> Spec<C, 1024> for SpecAdaptor<C, 1024> {
+            fn new(dev: &C) -> Result<Manipulator<C, 1024>, FsError> {
+                let b = dev.read_bytes::<1024>(1024)?;
 
-        Ok(Self {
-            rw: ByteRw::new(Wrapper(b)),
-        })
+                Ok(Manipulator {
+                    rw: ByteRw::new(Wrapper(b)),
+                })
+            }
+        }
+        SpecAdaptor::<C, N>::new(dev)
     }
 
     #[inline]
-    pub fn writeback(&self, dev: &C) -> Result<(), FsError> {
-        // FIXME
-        dev.write_bytes(1024, &self.rw.inner().0).map(|_| ())
+    pub fn writeback(&self, bio: &mut alloc::vec::Vec<(usize, C::Buffer<N>)>) {
+        bio.push((if N == 1024 { 1024 } else { 0 }, self.rw.inner().0.clone()));
     }
 }
 
 impl<C: Config, const N: usize> Manipulator<C, N> {
-    pub fn from_bytes(b: C::Buffer<1024>) -> Self {
+    pub fn from_bytes(b: C::Buffer<N>) -> Self {
         Self {
             rw: ByteRw::new(Wrapper(b)),
         }
@@ -74,7 +90,7 @@ impl<C: Config, const N: usize> Manipulator<C, N> {
     }
 
     crate::fs_field! {
-        ty: Wrapper<C>;
+        ty: Wrapper<C, N>;
         /// Total inode count.
         inodes_count : @0x0, u32;
         /// Total block count.
