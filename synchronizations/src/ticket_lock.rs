@@ -18,7 +18,7 @@
 use crate::HasConstDefault;
 use core::cell::UnsafeCell;
 use core::mem::ManuallyDrop;
-use core::ops::{Deref, DerefMut, Drop};
+use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 /// Trait that defines the operations on lock.

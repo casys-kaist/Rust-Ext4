@@ -17,7 +17,6 @@ use crate::filesystem::FileSystem;
 use crate::inode::AddressingOutput;
 use crate::transaction::Transaction;
 use crate::{Config, FileBlockNumber, FsError, InodeNumber, LogicalBlockNumber};
-use core::convert::TryInto;
 
 pub(crate) struct Cursor<'a, 'b, 'c, C: Config, const BLK_SIZE: usize> {
     pub(super) fba: FileBlockNumber,

@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use core::convert::TryInto;
-
 pub(crate) struct ByteRw<T>
 where
     T: core::convert::AsRef<[u8]>,

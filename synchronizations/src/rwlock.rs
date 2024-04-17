@@ -15,7 +15,7 @@
 //! RwLock implementations.
 use crate::HasConstDefault;
 use core::cell::UnsafeCell;
-use core::ops::{Deref, DerefMut, Drop};
+use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub enum Hint {

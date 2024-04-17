@@ -17,7 +17,7 @@
 //! This might be diverse into the SpinLock and MutexLock.
 use crate::HasConstDefault;
 use core::cell::UnsafeCell;
-use core::ops::{Deref, DerefMut, Drop};
+use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 /// Trait that defines the operations on lock.

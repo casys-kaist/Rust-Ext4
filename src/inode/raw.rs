@@ -17,7 +17,6 @@ use crate::filesystem::FileSystem;
 use crate::superblock::{Ext4FeatureIncompatible, Ext4FeatureReadOnly};
 use crate::utils::{ByteRw, CompoundAccessorU32, CompoundAccessorU64};
 use crate::{Config, FileType, InodeNumber};
-use core::convert::TryInto;
 
 const EXT4_GOOD_OLD_INODE_SIZE: usize = 0x80;
 

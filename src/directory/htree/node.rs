@@ -27,7 +27,6 @@ use crate::transaction::{Collector, Transaction};
 use crate::utils::ByteRw;
 use crate::{Config, FileBlockNumber, FileType, FsError, InodeNumber};
 use alloc::collections::BTreeMap;
-use core::convert::TryFrom;
 use core::hash::Hasher;
 
 #[repr(C)]
