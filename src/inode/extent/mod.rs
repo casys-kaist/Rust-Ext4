@@ -514,7 +514,6 @@ where
     Self: ExtentHeader,
 {
     fn set_entries_cnt(&mut self, v: u16);
-    fn set_max_entries_cnt(&mut self, v: u16);
     fn set_depth(&mut self, v: u16);
 }
 
@@ -522,10 +521,6 @@ impl<C: Config> ExtentHeaderMut for ExtentTree<C> {
     #[inline]
     fn set_entries_cnt(&mut self, v: u16) {
         self.entries_cnt = v;
-    }
-    #[inline]
-    fn set_max_entries_cnt(&mut self, v: u16) {
-        self.max_entries_cnt = v;
     }
     #[inline]
     fn set_depth(&mut self, v: u16) {
@@ -539,11 +534,7 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> ExtentHeaderMut for Node<'a, 'b, 
         let mut guard = self.b.write();
         ByteRw::new(guard.as_mut()).write_u16(2, v);
     }
-    #[inline]
-    fn set_max_entries_cnt(&mut self, v: u16) {
-        let mut guard = self.b.write();
-        ByteRw::new(guard.as_mut()).write_u16(4, v);
-    }
+
     #[inline]
     fn set_depth(&mut self, v: u16) {
         let mut guard = self.b.write();

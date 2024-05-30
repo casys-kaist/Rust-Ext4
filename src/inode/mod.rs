@@ -378,7 +378,7 @@ macro_rules! dispatch_cursor_last_mut {
 }
 
 pub struct InodeRw<C: Config, const BLK_SIZE: usize> {
-    pub mode: InodeMode,
+    pub _mode: InodeMode,
     pub size: u64,
     pub links_count: u16,
     pub addresses: InodeAddressingMode<C>,
@@ -466,7 +466,7 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
                 rw: RwLock::new(InodeRw {
                     size: raw_inode.size(fs).get(),
                     links_count: raw_inode.links_count().get(),
-                    mode: InodeMode::from_bits_truncate(raw_inode.mode(fs).get()),
+                    _mode: InodeMode::from_bits_truncate(raw_inode.mode(fs).get()),
                     addresses,
                 }),
             })
@@ -511,7 +511,7 @@ impl<C: Config, const BLK_SIZE: usize> Inode<C, BLK_SIZE> {
             rw: RwLock::new(InodeRw {
                 size: 0,
                 links_count: 1,
-                mode: Ext4De::from_file_type(ftype).default_mode(),
+                _mode: Ext4De::from_file_type(ftype).default_mode(),
                 addresses,
             }),
         }
