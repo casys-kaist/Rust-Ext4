@@ -19,16 +19,34 @@ use std::fs::OpenOptions;
 use std::path::Path;
 
 fn do_shell(path: &str) {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(Path::new(path))
-        .expect("Failed to open device.");
-
-    match ext4::open_fs(file).unwrap() {
-        ext4::FsBlkSizeDispatch::Blk1024(fs) => shell::Shell::new(fs).run(),
-        ext4::FsBlkSizeDispatch::Blk2048(fs) => shell::Shell::new(fs).run(),
-        ext4::FsBlkSizeDispatch::Blk4096(fs) => shell::Shell::new(fs).run(),
+    if let Ok(fs) = ext4::open_fs::<_, 1024>(
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(Path::new(path))
+            .expect("Failed to open device."),
+    ) {
+        shell::Shell::new(fs).run()
+    } else if let Ok(fs) = ext4::open_fs::<_, 2048>(
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(Path::new(path))
+            .expect("Failed to open device."),
+    ) {
+        shell::Shell::new(fs).run()
+    } else {
+        shell::Shell::new(
+            ext4::open_fs::<_, 4096>(
+                OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(Path::new(path))
+                    .expect("Failed to open device."),
+            )
+            .unwrap(),
+        )
+        .run()
     }
 }
 

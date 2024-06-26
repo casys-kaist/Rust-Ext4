@@ -15,7 +15,6 @@
 //! Simple Lock implementations.
 //!
 //! This might be diverse into the SpinLock and MutexLock.
-use crate::HasConstDefault;
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -25,14 +24,16 @@ pub trait Dreamer
 where
     Self: Send + Sync + Default,
 {
+    const DEFAULT: Self;
+
     type HookAux;
 
     /// Prehook that runs before try acquiring the lock.
     fn prehook(&self) -> Self::HookAux;
     /// Hook that runs after acquire the lock.
-    fn acquire_hook(&self, _l: &core::panic::Location<'static>);
+    fn acquire_hook(&self, #[cfg(feature = "track_lock")] _l: &core::panic::Location<'static>);
     /// Hook that runs after releasing the lock.
-    fn release_hook(&self, _l: &core::panic::Location<'static>);
+    fn release_hook(&self, #[cfg(feature = "track_lock")] _l: &core::panic::Location<'static>);
     /// Actions for sleeping.
     fn sleeping(&self, locked: &AtomicBool);
     /// Actions for waking-up.
@@ -73,29 +74,14 @@ where
 impl<T, D> SimpleLock<T, D>
 where
     T: Send,
-    D: Dreamer + HasConstDefault,
-{
-    /// Creates a new spin lock in an unlocked state ready for use.
-    pub const fn new_const(data: T) -> SimpleLock<T, D> {
-        SimpleLock {
-            locked: AtomicBool::new(false),
-            dreamer: D::DEFAULT,
-            data: UnsafeCell::new(data),
-        }
-    }
-}
-
-impl<T, D> SimpleLock<T, D>
-where
-    T: Send,
     D: Dreamer,
 {
     /// Creates a new spin lock in an unlocked state ready for use.
     #[inline(always)]
-    pub fn new(data: T) -> SimpleLock<T, D> {
+    pub const fn new(data: T) -> SimpleLock<T, D> {
         SimpleLock {
             locked: AtomicBool::new(false),
-            dreamer: D::default(),
+            dreamer: D::DEFAULT,
             data: UnsafeCell::new(data),
         }
     }
@@ -134,7 +120,10 @@ where
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
             .is_ok()
         {
-            self.dreamer.acquire_hook(core::panic::Location::caller());
+            self.dreamer.acquire_hook(
+                #[cfg(feature = "track_lock")]
+                core::panic::Location::caller(),
+            );
             return SimpleLockGuard {
                 lock: self,
                 data: unsafe { &mut *self.data.get() },
@@ -144,7 +133,10 @@ where
 
         self.acquire();
 
-        self.dreamer.acquire_hook(core::panic::Location::caller());
+        self.dreamer.acquire_hook(
+            #[cfg(feature = "track_lock")]
+            core::panic::Location::caller(),
+        );
         SimpleLockGuard {
             lock: self,
             data: unsafe { &mut *self.data.get() },
@@ -167,7 +159,10 @@ where
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
             .is_ok()
         {
-            self.dreamer.acquire_hook(core::panic::Location::caller());
+            self.dreamer.acquire_hook(
+                #[cfg(feature = "track_lock")]
+                core::panic::Location::caller(),
+            );
             Ok(SimpleLockGuard {
                 lock: self,
                 data: unsafe { &mut *self.data.get() },
@@ -233,8 +228,9 @@ where
         debug_assert!(self.lock.locked.load(Ordering::Acquire));
         self.lock.locked.store(false, Ordering::Release);
         self.lock.dreamer.waking_up();
-        self.lock
-            .dreamer
-            .release_hook(core::panic::Location::caller());
+        self.lock.dreamer.release_hook(
+            #[cfg(feature = "track_lock")]
+            core::panic::Location::caller(),
+        );
     }
 }

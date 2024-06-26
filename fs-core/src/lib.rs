@@ -1,4 +1,3 @@
-#![no_std]
 // Copyright 2021 Computer Architecture and Systems Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+#[cfg_attr(feature="no_std", no_std)]
+#[cfg(feature="no_std")] pub use path;
+#[cfg(not(feature="no_std"))] pub use std::path;
 
 use path::PathBuf;
 

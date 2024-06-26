@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //! RwLock implementations.
-use crate::HasConstDefault;
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -28,14 +27,25 @@ pub trait Dreamer
 where
     Self: Send + Sync + Default,
 {
+    const DEFAULT: Self;
+
     type HookAux;
 
     /// Prehook that runs before try acquiring the lock.
     fn prehook(&self) -> Self::HookAux;
     /// Hook that runs after acquire the lock.
-    fn acquire_hook(&self, hint: Hint, disable_dep: bool, _l: &core::panic::Location<'static>);
+    fn acquire_hook(
+        &self,
+        hint: Hint,
+        disable_dep: bool,
+        #[cfg(feature = "track_lock")] _l: &core::panic::Location<'static>,
+    );
     /// Hook that runs after releasing the lock.
-    fn release_hook(&self, hint: Hint, _l: &core::panic::Location<'static>);
+    fn release_hook(
+        &self,
+        hint: Hint,
+        #[cfg(feature = "track_lock")] _l: &core::panic::Location<'static>,
+    );
     /// Actions for sleeping.
     fn sleeping(&self, locked: &AtomicUsize, hint: Hint);
     /// Actions for waking-up.
@@ -149,10 +159,17 @@ where
                 .compare_exchange(1, STATE_WRITER_LOCKED, Ordering::Acquire, Ordering::Acquire)
                 .is_ok()
             {
-                lock.dreamer
-                    .release_hook(Hint::Read, core::panic::Location::caller());
-                lock.dreamer
-                    .acquire_hook(Hint::Write, false, core::panic::Location::caller());
+                lock.dreamer.release_hook(
+                    Hint::Read,
+                    #[cfg(feature = "track_lock")]
+                    core::panic::Location::caller(),
+                );
+                lock.dreamer.acquire_hook(
+                    Hint::Write,
+                    false,
+                    #[cfg(feature = "track_lock")]
+                    core::panic::Location::caller(),
+                );
                 break RwLockWriteGuard {
                     lock,
                     data: unsafe { &mut *lock.data.get() },
@@ -177,10 +194,17 @@ where
             .state
             .compare_exchange(STATE_WRITER_LOCKED, 1, Ordering::Acquire, Ordering::Acquire)
             .is_ok());
-        lock.dreamer
-            .release_hook(Hint::Write, core::panic::Location::caller());
-        lock.dreamer
-            .acquire_hook(Hint::Read, false, core::panic::Location::caller());
+        lock.dreamer.release_hook(
+            Hint::Write,
+            #[cfg(feature = "track_lock")]
+            core::panic::Location::caller(),
+        );
+        lock.dreamer.acquire_hook(
+            Hint::Read,
+            false,
+            #[cfg(feature = "track_lock")]
+            core::panic::Location::caller(),
+        );
         RwLockReadGuard {
             lock,
             data: unsafe { &*lock.data.get() },
@@ -192,28 +216,13 @@ where
 impl<T, D> RwLock<T, D>
 where
     T: Send,
-    D: Dreamer + HasConstDefault,
-{
-    /// Creates a new instance of an `RwLock<T>` which is unlocked.
-    pub const fn new_const(data: T) -> RwLock<T, D> {
-        RwLock {
-            state: AtomicUsize::new(0),
-            dreamer: D::DEFAULT,
-            data: UnsafeCell::new(data),
-        }
-    }
-}
-
-impl<T, D> RwLock<T, D>
-where
-    T: Send,
     D: Dreamer,
 {
     /// Creates a new instance of an `RwLock<T>` which is unlocked.
-    pub fn new(data: T) -> RwLock<T, D> {
+    pub const fn new(data: T) -> RwLock<T, D> {
         RwLock {
             state: AtomicUsize::new(0),
-            dreamer: D::default(),
+            dreamer: D::DEFAULT,
             data: UnsafeCell::new(data),
         }
     }
@@ -238,7 +247,8 @@ where
     /// Locks this rwlock with shared read access, blocking the current thread
     /// until it can be acquired.
     ///
-    /// The calling thread will be blocked until there are no more writers which
+    /// The call
+    /// ing thread will be blocked until there are no more writers which
     /// hold the lock. There may be other readers currently inside the lock when
     /// this method returns. This method does not provide any guarantees with
     /// respect to the ordering of whether contentious readers or writers will
@@ -253,8 +263,12 @@ where
             guard
         } else {
             let h = self.read_lock();
-            self.dreamer
-                .acquire_hook(Hint::Read, false, core::panic::Location::caller());
+            self.dreamer.acquire_hook(
+                Hint::Read,
+                false,
+                #[cfg(feature = "track_lock")]
+                core::panic::Location::caller(),
+            );
             RwLockReadGuard {
                 lock: self,
                 data: unsafe { &*self.data.get() },
@@ -287,8 +301,12 @@ where
                 .compare_exchange(prev, prev + 1, Ordering::Acquire, Ordering::Acquire)
                 .is_ok()
             {
-                self.dreamer
-                    .acquire_hook(Hint::Read, false, core::panic::Location::caller());
+                self.dreamer.acquire_hook(
+                    Hint::Read,
+                    false,
+                    #[cfg(feature = "track_lock")]
+                    core::panic::Location::caller(),
+                );
                 break Ok(RwLockReadGuard {
                     lock: self,
                     data: unsafe { &*self.data.get() },
@@ -330,8 +348,12 @@ where
             guard
         } else {
             let h = self.write_lock();
-            self.dreamer
-                .acquire_hook(Hint::Write, false, core::panic::Location::caller());
+            self.dreamer.acquire_hook(
+                Hint::Write,
+                false,
+                #[cfg(feature = "track_lock")]
+                core::panic::Location::caller(),
+            );
             RwLockWriteGuard {
                 lock: self,
                 data: unsafe { &mut *self.data.get() },
@@ -350,8 +372,12 @@ where
             guard
         } else {
             let h = self.write_lock();
-            self.dreamer
-                .acquire_hook(Hint::Write, true, core::panic::Location::caller());
+            self.dreamer.acquire_hook(
+                Hint::Write,
+                true,
+                #[cfg(feature = "track_lock")]
+                core::panic::Location::caller(),
+            );
             RwLockWriteGuard {
                 lock: self,
                 data: unsafe { &mut *self.data.get() },
@@ -387,8 +413,12 @@ where
                 )
                 .is_ok()
             {
-                self.dreamer
-                    .acquire_hook(Hint::Write, false, core::panic::Location::caller());
+                self.dreamer.acquire_hook(
+                    Hint::Write,
+                    false,
+                    #[cfg(feature = "track_lock")]
+                    core::panic::Location::caller(),
+                );
                 break Ok(RwLockWriteGuard {
                     lock: self,
                     data: unsafe { &mut *self.data.get() },
@@ -415,8 +445,12 @@ where
                 )
                 .is_ok()
             {
-                self.dreamer
-                    .acquire_hook(Hint::Write, true, core::panic::Location::caller());
+                self.dreamer.acquire_hook(
+                    Hint::Write,
+                    true,
+                    #[cfg(feature = "track_lock")]
+                    core::panic::Location::caller(),
+                );
                 break Ok(RwLockWriteGuard {
                     lock: self,
                     data: unsafe { &mut *self.data.get() },
@@ -462,7 +496,7 @@ where
 {
     type Target = T;
     fn deref(&self) -> &T {
-        &*self.data
+        self.data
     }
 }
 
@@ -498,9 +532,11 @@ where
         if self.lock.state.fetch_sub(1, Ordering::Release) == 1 {
             self.lock.dreamer.waking_up();
         }
-        self.lock
-            .dreamer
-            .release_hook(Hint::Read, core::panic::Location::caller());
+        self.lock.dreamer.release_hook(
+            Hint::Read,
+            #[cfg(feature = "track_lock")]
+            core::panic::Location::caller(),
+        );
     }
 }
 
@@ -519,8 +555,10 @@ where
             .state
             .fetch_and(!STATE_WRITER_LOCKED, Ordering::Release);
         self.lock.dreamer.waking_up();
-        self.lock
-            .dreamer
-            .release_hook(Hint::Write, core::panic::Location::caller());
+        self.lock.dreamer.release_hook(
+            Hint::Write,
+            #[cfg(feature = "track_lock")]
+            core::panic::Location::caller(),
+        );
     }
 }

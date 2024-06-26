@@ -15,7 +15,7 @@
 use crate::inode::Inode;
 use crate::Config;
 use alloc::sync::Arc;
-use path::PathBuf;
+use fs_core::path::PathBuf;
 
 pub struct Symlink<C: Config, const BLK_SIZE: usize> {
     pub(crate) inode: Arc<Inode<C, BLK_SIZE>>,

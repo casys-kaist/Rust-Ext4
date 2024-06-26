@@ -11,11 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use fs_core::{FileType, FsError};
-use path::Path;
-use std::convert::TryFrom;
-use std::fs::OpenOptions;
-use std::vec::Vec;
+use fs_core::{path::Path, FileType, FsError};
+use std::{convert::TryFrom, ffi::OsStr, fs::OpenOptions, vec::Vec};
 
 pub fn format(path: &str, block: usize, create: Option<u64>) -> Result<(), FsError> {
     use rand::Rng;
@@ -83,14 +80,14 @@ pub fn openat<P: AsRef<Path>, const BLK_SIZE: usize>(
     let target = pathname.as_ref();
     let mut path_iter = target.iter().peekable();
 
-    let mut dir = if path_iter.peek() == Some(&"/") {
+    let mut dir = if path_iter.peek() == Some(&OsStr::new("/")) {
         path_iter.next();
         fs.root().unwrap()
     } else {
         dir.clone()
     };
     while let Some(entry) = path_iter.next() {
-        match dir.open_entry(entry)? {
+        match dir.open_entry(entry.to_str().unwrap())? {
             FsObject::Directory(ndir) => dir = ndir,
             f if path_iter.peek().is_none() => return Ok(f),
             _ => return Err(FsError::NotDirectory),
@@ -111,9 +108,9 @@ fn do_create<P: AsRef<Path>, const BLK_SIZE: usize>(
         openat(dir, n)?
             .get_directory()
             .ok_or(FsError::NotDirectory)?
-            .create_entry(name, ft, &tx)
+            .create_entry(name.to_str().unwrap(), ft, &tx)
     } else {
-        dir.create_entry(name, ft, &tx)
+        dir.create_entry(name.to_str().unwrap(), ft, &tx)
     }
     .and_then(|_| tx.done(&fs))
 }
@@ -149,9 +146,9 @@ pub fn unlinkat<P: AsRef<Path>, const BLK_SIZE: usize>(
                 return Err(FsError::NotEmpty);
             }
         }
-        parent.remove_entry(name, &tx)
+        parent.remove_entry(name.to_str().unwrap(), &tx)
     } else {
-        dir.remove_entry(name, &tx)
+        dir.remove_entry(name.to_str().unwrap(), &tx)
     }
     .and_then(|_| tx.done(&fs))
 }
