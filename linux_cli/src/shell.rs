@@ -1,5 +1,6 @@
 use ext4::{FileSystem, FsError};
-use path::{Path, PathBuf};
+use fs_core::path::{Path, PathBuf};
+use std::ffi::OsStr;
 use std::io::{self, Write};
 use std::sync::{Arc, Weak};
 
@@ -14,22 +15,17 @@ type FsObject<const BLK_SIZE: usize> = ext4::FsObject<std::fs::File, BLK_SIZE>;
 
 // check if directory has only two entry_path, . and ..
 fn is_directory_empty<const BLK_SIZE: usize>(dir: &Directory<BLK_SIZE>) -> bool {
-    let mut pos = 0_usize;
-    let mut i = 0;
-    loop {
-        match dir.read_dir(pos).unwrap() {
-            Some((_de, pos_next)) if i < 2 => {
-                pos = pos_next;
-                i += 1;
-            }
-            Some(_) if i == 2 => {
-                break false;
-            }
-            _ => {
-                break true;
-            }
+    let mut is_not_empty = false;
+    dir.fill_dir_from(0, |en, _| {
+        if en.path.to_str().unwrap() != "." || en.path.to_str().unwrap() != ".." {
+            is_not_empty = true;
+            false
+        } else {
+            true
         }
-    }
+    })
+    .unwrap();
+    is_not_empty
 }
 
 pub struct Shell<const BLK_SIZE: usize> {
@@ -92,7 +88,7 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
 
         let mut ret = PathBuf::from("/");
         for p in base.into_iter() {
-            match p {
+            match p.to_str().unwrap() {
                 "." => (),
                 ".." => {
                     ret.pop();
@@ -109,7 +105,7 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
         let target = Path::new(target);
         let mut path_iter = target.iter().peekable();
 
-        let mut dir = if path_iter.peek() == Some(&"/") {
+        let mut dir = if path_iter.peek() == Some(&OsStr::new("/")) {
             path_iter.next();
             self.fs.root().unwrap()
         } else {
@@ -117,12 +113,13 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
         };
         while let Some(entry) = path_iter.next() {
             if path_iter.peek().is_none() {
-                return Ok((Some(entry.to_string()), dir));
+                return Ok((Some(entry.to_str().unwrap().to_string()), dir));
             }
 
-            match dir.open_entry(entry)? {
+            match dir.open_entry(entry.to_str().unwrap())? {
                 FsObject::Directory(ndir) => dir = ndir,
                 FsObject::File(_) => return Err(FsError::NotDirectory),
+                FsObject::Symlink(_) => todo!(),
             }
         }
         Ok((None, dir))
@@ -150,12 +147,12 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
         let dir = openat(&self.cwd, path)?
             .get_directory()
             .ok_or(FsError::NotDirectory)?;
-        let mut pos = 0;
         let mut entries = vec![];
-        while let Some((de, pos_next)) = dir.read_dir(pos).unwrap() {
-            pos = pos_next;
-            entries.push(de);
-        }
+        dir.fill_dir_from(0, |en, _| {
+            entries.push(en);
+            true
+        })
+        .unwrap();
         Ok(entries)
     }
 
@@ -233,14 +230,28 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                     Ok((Some(fname), parent)) => {
                         if let Ok(FsObject::Directory(parent)) = parent.open_entry(&fname) {
                             // cp a ../ => cp a ../a
-                            (parent, Path::new(args[0]).file_name().unwrap().to_string())
+                            (
+                                parent,
+                                Path::new(args[0])
+                                    .file_name()
+                                    .unwrap()
+                                    .to_str()
+                                    .unwrap()
+                                    .to_string(),
+                            )
                         } else {
                             (parent, fname)
                         }
                     }
-                    Ok((_, parent)) => {
-                        (parent, Path::new(args[0]).file_name().unwrap().to_string())
-                    }
+                    Ok((_, parent)) => (
+                        parent,
+                        Path::new(args[0])
+                            .file_name()
+                            .unwrap()
+                            .to_str()
+                            .unwrap()
+                            .to_string(),
+                    ),
                     Err(err) => {
                         return eprintln!("cp: cannot create '{}' : {}", dst, display_error(err))
                     }
@@ -273,7 +284,11 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                         .and_then(|o| o.get_file().ok_or(FsError::NotFile))
                     {
                         Ok(src_file) => {
-                            self.do_copy(src_file, &parent, Path::new(target).file_name().unwrap());
+                            self.do_copy(
+                                src_file,
+                                &parent,
+                                Path::new(target).file_name().unwrap().to_str().unwrap(),
+                            );
                         }
                         Err(err) => {
                             eprintln!("cp: cannot access '{}': {}", target, display_error(err))
@@ -294,7 +309,6 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                 let fs = Weak::upgrade(&self.cwd.get_inode().fs)
                     .ok_or(FsError::Shutdown)
                     .unwrap();
-                let tx = fs.open_transaction();
                 for arg in args {
                     match self.open_parent(arg) {
                         Ok((Some(fname), parent)) => {
@@ -303,6 +317,7 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                                     match new_parent.open_entry(&new_entry) {
                                         Ok(FsObject::Directory(d)) => (fname.clone(), d),
                                         Ok(FsObject::File(_)) => {
+                                            let tx = fs.open_transaction();
                                             match parent.remove_entry(dst, &tx) {
                                                 Err(FsError::NoEntry) => (),
                                                 Err(err) => {
@@ -315,8 +330,10 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                                                 }
                                                 _ => (),
                                             }
+                                            tx.done(&fs).unwrap();
                                             (new_entry, new_parent)
                                         }
+                                        Ok(FsObject::Symlink(_)) => todo!(),
                                         Err(_) => (new_entry, new_parent),
                                     }
                                 }
@@ -328,7 +345,12 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                             };
 
                             // FIXME: mkdir b; touch a; mv a b => error
-                            if let Err(err) = parent.rename(&fname, &new_parent, &new_entry, &tx) {
+                            if let Err(err) = parent.rename(
+                                &fname,
+                                &new_parent,
+                                &new_entry,
+                                fs.open_transaction(),
+                            ) {
                                 eprintln!("mv: cannot move '{}': {}", arg, display_error(err))
                             }
                         }
@@ -336,7 +358,6 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                         Err(err) => eprintln!("mv: cannot move '{}': {}", arg, display_error(err)),
                     }
                 }
-                tx.done(&fs).unwrap()
             }
         } else {
             eprintln!("mv: missing file operand")
@@ -390,6 +411,7 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                             parent.remove_entry(target, &tx).expect("File system error");
                         }
                     }
+                    Ok(FsObject::Symlink(_)) => todo!(),
                     Err(e) => eprintln!("rmdir: {}: {}", target, display_error(e)),
                 },
                 Ok(_) => eprintln!("rmdir: cannot remove '/'"),
@@ -434,6 +456,7 @@ impl<const BLK_SIZE: usize> Shell<BLK_SIZE> {
                         Ok(FsObject::Directory(_)) => {
                             eprintln!("rm: {}: {}", target, display_error(FsError::NotFile))
                         }
+                        Ok(FsObject::Symlink(_)) => todo!(),
                         Err(e) => eprintln!("rm: {}: {}", target, display_error(e)),
                     },
                     Ok(_) => eprintln!("rm: cannot remove '{}'", target),

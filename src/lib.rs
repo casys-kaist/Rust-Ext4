@@ -16,13 +16,20 @@
 //!
 //! <https://ext4.wiki.kernel.org/index.php/Ext4_Disk_Layout>
 
-#![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
+#![cfg_attr(feature = "no_std", no_std)]
 #![warn(unsafe_code)]
 #![feature(array_chunks, min_specialization)]
 
-#[macro_use]
-mod prelude;
-pub use prelude::*;
+#[cfg(not(feature = "no_std"))]
+mod std;
+
+pub use synchronizations::rwlock::{
+    Dreamer as RwDreamer,
+    RwLock,
+    RwLockReadGuard,
+    RwLockWriteGuard
+};
+pub use synchronizations::ticket_lock::{Dreamer, TicketLock, TicketLockGuard};
 
 extern crate alloc;
 

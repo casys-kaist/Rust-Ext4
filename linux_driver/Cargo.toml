@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ext4 = { path = "../", features = ["std"] }
+ext4 = { path = "../" }
 rand = { version = "*" }
 fs_core = { path = "../fs-core" }
-path = { path = "../path" }

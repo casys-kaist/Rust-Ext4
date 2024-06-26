@@ -17,8 +17,8 @@ use crate::directory::entry::DirectoryEntryDispatch;
 use crate::filesystem::FileSystem;
 use crate::transaction::{Collector, Transaction};
 use crate::{Config, FileBlockNumber, FileType, FsError, InodeNumber};
+use fs_core::path::Path;
 use fs_core::DirEntry;
-use path::Path;
 
 pub struct LinearScheme<'a, C: Config, const BLK_SIZE: usize> {
     dir: &'a Directory<C, BLK_SIZE>,

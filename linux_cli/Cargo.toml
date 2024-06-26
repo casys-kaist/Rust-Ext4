@@ -5,8 +5,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "3.0.0-rc.7", features = ["derive"] }
-ext4 = { path = "../", features = ["std"] }
+ext4 = { path = "../" }
 fs_core = { path = "../fs-core" }
-path = { path = "../path" }
 colored = "2.0.0"
 linux_driver = { path = "../linux_driver" }
