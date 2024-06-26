@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg_attr(feature="no_std", no_std)]
-#[cfg(feature="no_std")] pub use path;
-#[cfg(not(feature="no_std"))] pub use std::path;
+#![cfg_attr(feature = "no_std", no_std)]
+#[cfg(feature = "no_std")]
+pub use path;
+#[cfg(not(feature = "no_std"))]
+pub use std::path;
 
 use path::PathBuf;
 

@@ -8,4 +8,4 @@ bitflags = "1.2.1"
 path = { path = "../lib/path", optional = true }
 
 [features]
-no_std = []
+no_std = ["path"]
