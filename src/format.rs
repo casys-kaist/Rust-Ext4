@@ -325,7 +325,7 @@ pub fn format<C: Config, const BLK_SIZE: usize>(
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::{make_disk, test_oracle};
+    use crate::std::tests::{make_disk, test_oracle};
 
     const M: u64 = 1024 * 1024;
     const G: u64 = 1024 * 1024 * 1024;
