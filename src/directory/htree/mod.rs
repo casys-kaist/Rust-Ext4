@@ -20,9 +20,9 @@ use crate::filesystem::FileSystem;
 use crate::transaction::{Collector, Transaction};
 use crate::{Config, FileBlockNumber, FileType, FsError, InodeNumber, LogicalBlockNumber};
 use cursor::HTreeCursor;
+use fs_core::path::Path;
 use fs_core::DirEntry;
 use node::DirDxRoot;
-use path::Path;
 
 pub struct HTreeScheme<
     'a,

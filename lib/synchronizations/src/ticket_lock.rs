@@ -15,7 +15,6 @@
 //! Ticket Lock implementations.
 //!
 //! This might be diverse into the SpinLock and MutexLock.
-use crate::HasConstDefault;
 use core::cell::UnsafeCell;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
@@ -26,14 +25,22 @@ pub trait Dreamer
 where
     Self: Send + Sync + Default,
 {
+    const DEFAULT: Self;
+
     type HookAux;
 
     /// Prehook that runs before try acquiring the lock.
     fn prehook(&self) -> Self::HookAux;
     /// Hook that runs after acquire the lock.
-    fn acquire_hook(&self, loc: &'static core::panic::Location<'static>);
+    fn acquire_hook(
+        &self,
+        #[cfg(feature = "track_lock")] loc: &'static core::panic::Location<'static>,
+    );
     /// Hook that runs after releasing the lock.
-    fn release_hook(&self, loc: &'static core::panic::Location<'static>);
+    fn release_hook(
+        &self,
+        #[cfg(feature = "track_lock")] loc: &'static core::panic::Location<'static>,
+    );
     /// Actions for sleeping.
     fn sleeping(&self, locked: &AtomicU32, ticket: u32);
     /// Actions for waking-up.
@@ -87,32 +94,15 @@ where
 impl<T, D> TicketLock<T, D>
 where
     T: Send,
-    D: Dreamer + HasConstDefault,
+    D: Dreamer,
 {
     /// Creates a new spin lock in an unlocked state ready for use.
-    pub const fn new_const(data: T) -> TicketLock<T, D> {
+    pub const fn new(data: T) -> TicketLock<T, D> {
         TicketLock {
             ticket: Ticket {
                 try_lock: ManuallyDrop::new(AtomicU64::new(0)),
             },
             dreamer: D::DEFAULT,
-            data: UnsafeCell::new(data),
-        }
-    }
-}
-
-impl<T, D> TicketLock<T, D>
-where
-    T: Send,
-    D: Dreamer,
-{
-    /// Creates a new spin lock in an unlocked state ready for use.
-    pub fn new(data: T) -> TicketLock<T, D> {
-        TicketLock {
-            ticket: Ticket {
-                try_lock: ManuallyDrop::new(AtomicU64::new(0)),
-            },
-            dreamer: D::default(),
             data: UnsafeCell::new(data),
         }
     }
@@ -151,7 +141,10 @@ where
 
         let now = unsafe { self.ticket.ticket_owner.0.load(Ordering::Relaxed) };
         if now == ticket {
-            self.dreamer.acquire_hook(core::panic::Location::caller());
+            self.dreamer.acquire_hook(
+                #[cfg(feature = "track_lock")]
+                core::panic::Location::caller(),
+            );
             return TicketLockGuard {
                 lock: self,
                 data: unsafe { &mut *self.data.get() },
@@ -161,7 +154,10 @@ where
 
         self.acquire(ticket);
 
-        self.dreamer.acquire_hook(core::panic::Location::caller());
+        self.dreamer.acquire_hook(
+            #[cfg(feature = "track_lock")]
+            core::panic::Location::caller(),
+        );
         TicketLockGuard {
             lock: self,
             data: unsafe { &mut *self.data.get() },
@@ -193,7 +189,10 @@ where
         }
         .is_ok()
         {
-            self.dreamer.acquire_hook(core::panic::Location::caller());
+            self.dreamer.acquire_hook(
+                #[cfg(feature = "track_lock")]
+                core::panic::Location::caller(),
+            );
             Ok(TicketLockGuard {
                 lock: self,
                 data: unsafe { &mut *self.data.get() },
@@ -269,8 +268,9 @@ where
                 .fetch_add(1, Ordering::Relaxed)
         };
         self.lock.dreamer.waking_up();
-        self.lock
-            .dreamer
-            .release_hook(core::panic::Location::caller());
+        self.lock.dreamer.release_hook(
+            #[cfg(feature = "track_lock")]
+            core::panic::Location::caller(),
+        );
     }
 }
