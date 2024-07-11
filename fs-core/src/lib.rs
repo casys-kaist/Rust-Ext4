@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg_attr(feature="no_std", no_std)]
-#[cfg(feature="no_std")] pub use path;
-#[cfg(not(feature="no_std"))] pub use std::path;
+#[cfg_attr(feature = "no_std", no_std)]
+#[cfg(feature = "no_std")]
+pub use path;
+#[cfg(not(feature = "no_std"))]
+pub use std::path;
 
 use path::PathBuf;
 
@@ -33,6 +35,8 @@ pub enum FsError {
     NotFile,
     /// Target is not directory.
     NotDirectory,
+    /// Target is not symlink.
+    NotSymlink,
     /// Directory is not empty.
     NotEmpty,
     /// File Exist.
@@ -93,6 +97,31 @@ impl FileType {
             6 => Self::Socket,
             7 => Self::Symlink,
             _ => Self::Unknown,
+        }
+    }
+
+    pub fn default_mode(&self) -> InodeMode {
+        match self {
+            Self::Fifo | Self::CharacterDev | Self::BlockDev | Self::RegularFile | Self::Socket => {
+                InodeMode::WOTH
+                    | InodeMode::ROTH
+                    | InodeMode::WGRP
+                    | InodeMode::RGRP
+                    | InodeMode::WUSR
+                    | InodeMode::RUSR
+            }
+            Self::Directory | Self::Symlink => {
+                InodeMode::XOTH
+                    | InodeMode::WOTH
+                    | InodeMode::ROTH
+                    | InodeMode::XGRP
+                    | InodeMode::WGRP
+                    | InodeMode::RGRP
+                    | InodeMode::XUSR
+                    | InodeMode::WUSR
+                    | InodeMode::RUSR
+            }
+            _ => unreachable!(),
         }
     }
 }
