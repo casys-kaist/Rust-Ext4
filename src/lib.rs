@@ -24,10 +24,7 @@
 mod std;
 
 pub use synchronizations::rwlock::{
-    Dreamer as RwDreamer,
-    RwLock,
-    RwLockReadGuard,
-    RwLockWriteGuard
+    Dreamer as RwDreamer, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 pub use synchronizations::ticket_lock::{Dreamer, TicketLock, TicketLockGuard};
 

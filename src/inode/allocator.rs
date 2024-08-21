@@ -15,7 +15,7 @@
 use crate::filesystem::FileSystem;
 use crate::transaction::Transaction;
 use crate::types::BlockGroupId;
-use crate::{Config, FileType, FsError, InodeNumber, RwLock, RwLockReadGuard};
+use crate::{std::RwLock, std::RwLockReadGuard, Config, FileType, FsError, InodeNumber};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
@@ -85,7 +85,7 @@ impl<C: Config> Allocator<C> {
             loop {
                 // CAS to get bits.
                 let val = bits.load(Ordering::Relaxed);
-                let x = val ^ core::u8::MAX;
+                let x = val ^ u8::MAX;
                 if x != 0 {
                     // toggle all bits.
                     let (mask, ret) = {

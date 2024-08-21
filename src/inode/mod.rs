@@ -13,7 +13,7 @@
 // limitations under the License.
 
 mod allocator;
-mod extent;
+pub(crate) mod extent;
 mod legacy;
 mod manager;
 mod raw;
@@ -25,8 +25,8 @@ use crate::superblock::Ext4FeatureIncompatible;
 use crate::symlink::Symlink;
 use crate::transaction::Transaction;
 use crate::{
-    Config, FileBlockNumber, FileType, FsError, FsObject, InodeMode, InodeNumber,
-    LogicalBlockNumber, RwLock,
+    std::RwLock, Config, FileBlockNumber, FileType, FsError, FsObject, InodeMode, InodeNumber,
+    LogicalBlockNumber,
 };
 use alloc::sync::{Arc, Weak};
 use bitflags::bitflags;

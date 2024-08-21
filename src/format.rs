@@ -317,7 +317,11 @@ pub fn format<C: Config, const BLK_SIZE: usize>(
     );
     let mut sb = make_sb::<C, BLK_SIZE>(aux);
     fill_bg(&dev, &mut sb)?;
-    dev.write_bytes(1024, &sb.manipulator.lock().rw.inner().0)?;
+    const BUFSIZE: usize = 1024;
+    let mut buf = C::Buffer::<BUFSIZE>::zeroed();
+    buf.as_mut()[0..BUFSIZE]
+        .copy_from_slice(sb.manipulator.lock().rw.inner().0[0..BUFSIZE].as_ref());
+    dev.write_bytes(1024, &buf)?;
     let fs = FileSystem::<C, BLK_SIZE>::new(dev, sb);
     make_root(&fs)?;
     Ok(fs)

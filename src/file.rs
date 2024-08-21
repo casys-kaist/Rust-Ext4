@@ -231,8 +231,9 @@ mod tests {
 
     #[test]
     fn write_big() {
-        // const SIZE: usize = 4 * 1024 *1024 * 1024;
+        // const SIZE: usize = 4 * 1024 * 1024 * 1024;
         const SIZE: usize = 256 * 1024 * 1024;
+        // const SIZE: usize = 16 * 1024 * 1024 * 1024;
         run_test(
             |fs| {
                 let buf = Box::new([0; 4096]);
@@ -251,7 +252,7 @@ mod tests {
                 println!("wb");
                 tx.done(&fs).unwrap();
             },
-            (SIZE as u64) / 1024 / 1024 + 100,
+            (SIZE as u64) / 1024 / 1024 + 1000,
         );
     }
 }
