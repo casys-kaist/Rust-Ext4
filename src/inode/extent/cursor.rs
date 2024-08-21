@@ -136,7 +136,9 @@ where
                 (true, true) => return Ok((start + ((self.fba.0 - block.0) as u64), 1)),
                 (_, false) => todo!("Uninitialized extent"),
                 (false, true) if block > self.fba => start + (self.fba.0 as u64 - start.0),
-                (false, true) => start - (self.fba.0 as u64 - block.0 as u64),
+                (false, true) => {
+                    LogicalBlockNumber(start.0.saturating_sub(self.fba.0 as u64 - block.0 as u64))
+                } // if start==0, overflow
             }
         } else if self.path.leafs.is_empty() {
             // tree is empty.
@@ -166,7 +168,7 @@ where
             for i in 0..len {
                 self.fs
                     .blocks
-                    .get_mut_noload(n + (i as u64), &self.tx.collector)?;
+                    .get_mut_noload(n + (i as u64), Some(&self.tx.collector))?;
             }
         }
 

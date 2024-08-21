@@ -16,6 +16,7 @@ use super::collector::{Collector, PostludeOps};
 use crate::block::BlockRef;
 use crate::block_group;
 use crate::filesystem::FileSystem;
+use crate::inode::extent::{Entry, RawNode};
 use crate::inode::{self, RawInodeAddressingMode};
 use crate::superblock;
 use crate::{
@@ -93,6 +94,12 @@ impl core::fmt::Debug for InodeSetSize {
 }
 
 #[derive(Debug)]
+pub struct InodeUpdateRoot {
+    pub(super) ino: InodeNumber,
+    pub(super) address: RawInodeAddressingMode,
+}
+
+#[derive(Debug)]
 pub enum Event {
     BlockAllocationOnBg(BlockAllocationOnBg),
     BlockDeallocationOnBg(BlockDeallocationOnBg),
@@ -104,6 +111,8 @@ pub enum Event {
     InodeUpdateOrphanLink(InodeUpdateOrphanLink),
     FreeInodesCountDecOnSb,
     FreeInodesCountIncOnSb,
+    InodeUpdateRoot(InodeUpdateRoot),
+    ExtentUpdateNode(ExtentNodeOps),
 }
 
 #[derive(Debug)]
@@ -206,6 +215,8 @@ impl Events {
                 Event::InodeSetSize(op) => {
                     wb_grp.inode_ops.push(InodeOps::SetSize(op));
                 }
+                Event::InodeUpdateRoot(ext) => wb_grp.inode_ops.push(InodeOps::UpdateRoot(ext)),
+                Event::ExtentUpdateNode(op) => wb_grp.extent_node_ops.push(op),
             }
         }
         wb_grp
@@ -244,6 +255,7 @@ pub enum InodeOps {
     SetSize(InodeSetSize),
     UpdateOrphanLink(InodeUpdateOrphanLink),
     SetBlock { ino: InodeNumber, cnt: i64 },
+    UpdateRoot(InodeUpdateRoot),
 }
 
 fn get_inode<'a, 'b, C: Config + 'a, const BLK_SIZE: usize>(
@@ -300,6 +312,7 @@ struct WritebackGroup<C: Config, const BLK_SIZE: usize> {
     bg_deltas: HashMap<BlockGroupId, BgDelta>,
     sb_delta: Option<SbDelta>,
     inode_ops: Vec<InodeOps>,
+    extent_node_ops: Vec<ExtentNodeOps>,
     _ty: core::marker::PhantomData<C>,
 }
 
@@ -309,6 +322,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             bg_deltas: HashMap::new(),
             sb_delta: None,
             inode_ops: Vec::new(),
+            extent_node_ops: Vec::new(),
             _ty: core::marker::PhantomData,
         }
     }
@@ -408,6 +422,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             bg_deltas,
             sb_delta,
             inode_ops,
+            extent_node_ops,
             ..
         } = self;
 
@@ -420,6 +435,9 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
         for op in inode_ops.into_iter() {
             Self::submit_inode_ops(fs, op, &mut raw_sb, collector)?;
         }
+
+        Self::submit_extent_node_ops(fs, extent_node_ops, collector)?;
+
         Self::submit_sb(sb_delta, raw_sb, collector)?;
         Ok(())
     }
@@ -542,7 +560,67 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
                         .0,
                 );
             }
+            InodeOps::UpdateRoot(ext) => {
+                let InodeUpdateRoot { ino, address } = ext;
+                // println!("Commit Root Update - Ino: {}, Inode - {:?}\n", ino.0, address);
+                let (raw, range) = get_inode(fs, ino, collector)?;
+                let mut guard = raw.write();
+                let mut inode = inode::Manipulator::new(&mut guard[range]);
+                inode.set_addresses(fs, address);
+            }
         }
+        Ok(())
+    }
+
+    fn submit_extent_node_ops(
+        fs: &FileSystem<C, BLK_SIZE>,
+        ops: Vec<ExtentNodeOps>,
+        collector: &Collector,
+    ) -> Result<(), FsError> {
+        let mut op_map = HashMap::new(); // Map: lba -> Vec<ExtentNodeOps>
+
+        ops.iter().for_each(|op| {
+            let lba = op.lba();
+            op_map.entry(lba).or_insert(Vec::new()).push(op);
+        });
+
+        for (lba, op_vec) in op_map {
+            let raw_conf: [u8; BLK_SIZE] = fs
+                .blocks
+                .get_mut(lba, collector)?
+                .read()
+                .as_slice()
+                .try_into()
+                .expect("Invalid block size");
+            let mut raw_node = RawNode::from_raw(raw_conf);
+
+            for op in op_vec.into_iter() {
+                match op {
+                    ExtentNodeOps::InsertAt(InsertAt { at, entry, .. }) => {
+                        raw_node.insert_at(entry.clone(), *at).unwrap();
+                        // println!("Commit Node Insert - lba: {}, at: {}", lba.0, at);
+                    }
+                    ExtentNodeOps::ReplaceAt(ReplaceAt { at, entry, .. }) => {
+                        raw_node.replace_at(entry.clone(), *at).unwrap();
+                        // println!("Commit Node Replace - lba: {}, at: {}", lba.0, at);
+                    }
+                    ExtentNodeOps::SetEntriesCnt(SetEntriesCnt { v, .. }) => {
+                        raw_node.set_entries_cnt(*v);
+                        // println!("Commit Node SetEntriesCnt - lba: {}, v: {}", lba.0, v);
+                    }
+                    ExtentNodeOps::Init(Init { depth, .. }) => {
+                        raw_node.init(*depth);
+                        // println!("Commit Node Init - lba: {}, depth: {}", lba.0, depth);
+                    }
+                }
+            }
+
+            let raw_conf = raw_node.to_raw();
+            let b_ref = fs.blocks.get_mut(lba, collector)?;
+            let mut guard = b_ref.write();
+            guard.copy_from_slice(&raw_conf);
+        }
+
         Ok(())
     }
 
@@ -570,5 +648,50 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
         }
         raw_sb.writeback(collector);
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct InsertAt {
+    pub(super) node_lba: LogicalBlockNumber,
+    pub(super) at: usize,
+    pub(super) entry: Entry,
+}
+
+#[derive(Debug)]
+pub struct ReplaceAt {
+    pub(super) node_lba: LogicalBlockNumber,
+    pub(super) at: usize,
+    pub(super) entry: Entry,
+}
+
+#[derive(Debug)]
+pub struct SetEntriesCnt {
+    pub(super) node_lba: LogicalBlockNumber,
+    pub(super) v: u16,
+}
+
+#[derive(Debug)]
+pub struct Init {
+    pub(super) node_lba: LogicalBlockNumber,
+    pub(super) depth: u16,
+}
+
+#[derive(Debug)]
+pub(crate) enum ExtentNodeOps {
+    InsertAt(InsertAt),
+    ReplaceAt(ReplaceAt),
+    SetEntriesCnt(SetEntriesCnt),
+    Init(Init),
+}
+
+impl ExtentNodeOps {
+    fn lba(&self) -> LogicalBlockNumber {
+        match self {
+            ExtentNodeOps::InsertAt(InsertAt { node_lba, .. }) => *node_lba,
+            ExtentNodeOps::ReplaceAt(ReplaceAt { node_lba, .. }) => *node_lba,
+            ExtentNodeOps::SetEntriesCnt(SetEntriesCnt { node_lba, .. }) => *node_lba,
+            ExtentNodeOps::Init(Init { node_lba, .. }) => *node_lba,
+        }
     }
 }

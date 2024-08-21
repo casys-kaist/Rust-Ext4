@@ -21,8 +21,8 @@ use crate::superblock::SuperBlock;
 use crate::transaction::{Collector, Transaction};
 use crate::types::Zero;
 use crate::{
-    BlockGroupId, Config, FsError, InodeNumber, LogicalBlockNumber, RwLock, RwLockReadGuard,
-    RwLockWriteGuard,
+    std::RwLock, std::RwLockReadGuard, std::RwLockWriteGuard, BlockGroupId, Config, FsError,
+    InodeNumber, LogicalBlockNumber,
 };
 use alloc::sync::Arc;
 
@@ -224,13 +224,15 @@ impl<C: Config, const BLK_SIZE: usize> Manager<C, BLK_SIZE> {
     pub(crate) fn get_mut_noload<'l, 'j>(
         &'l self,
         lba: LogicalBlockNumber,
-        collector: &'j Collector,
+        collector: Option<&'j Collector>,
     ) -> Result<BlockRef<'l, 'j, C, BLK_SIZE, true>, FsError>
     where
         'l: 'j,
     {
         let mut created = false;
-        collector.track(lba);
+        if let Some(collector) = collector {
+            collector.track(lba);
+        }
         Ok(self
             .blocks
             .get_or_insert_arc::<_, ()>(lba, |_| {

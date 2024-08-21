@@ -440,7 +440,7 @@ impl<
         // Allocate new block.
         let (dx_fba, new_blk) = dispatch_cursor_last_mut!(inode, fs, tx, |mut c| {
             let lba = c.or_allocated(false).unwrap();
-            (c.fba(), fs.blocks.get_mut_noload(lba, &tx.collector)?)
+            (c.fba(), fs.blocks.get_mut_noload(lba, Some(&tx.collector))?)
         });
 
         let size = inode.get_size();
@@ -637,7 +637,9 @@ impl<
             DirectoryBlock::new(&mut **blk.write(), fs).clear();
         }
         inode.set_size(BLK_SIZE as u64 * 2, tx);
-        let raw = fs.blocks.get_mut_noload(root_block_addr, &tx.collector)?;
+        let raw = fs
+            .blocks
+            .get_mut_noload(root_block_addr, Some(&tx.collector))?;
 
         {
             let mut guard = raw.write();

@@ -181,7 +181,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
         if flags.contains(BlockGroupFlag::BLOCK_UNINIT) {
             let bref = fs
                 .blocks
-                .get_mut_noload(self.block_bitmap_lba, &tx.collector)?;
+                .get_mut_noload(self.block_bitmap_lba, Some(&tx.collector))?;
             let mut guard = bref.write();
             let mut block_bitmap = ByteRw::new(guard.as_mut());
             let mut base = (fs.sb.first_data_block as u64 + desc_blocks) as usize + 1;
@@ -204,7 +204,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
         if flags.contains(BlockGroupFlag::INODE_UNINIT) {
             let bref = fs
                 .blocks
-                .get_mut_noload(self.inode_bitmap_lba, &tx.collector)?;
+                .get_mut_noload(self.inode_bitmap_lba, Some(&tx.collector))?;
 
             let mut guard = bref.write();
             ByteRw::new(guard.as_mut()).set_bitmap(fs.sb.inodes_per_group as usize..BLK_SIZE * 8);
@@ -214,7 +214,7 @@ impl<const BLK_SIZE: usize> BlockGroup<BLK_SIZE> {
                     ..self.inode_table_first_block.0 + inode_blocks)
                     .map(LogicalBlockNumber)
                 {
-                    let _ = fs.blocks.get_mut_noload(lba, &tx.collector)?;
+                    let _ = fs.blocks.get_mut_noload(lba, Some(&tx.collector))?;
                 }
                 nflags.insert(BlockGroupFlag::ITABLE_ZEROED);
             }

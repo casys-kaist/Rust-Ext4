@@ -17,13 +17,15 @@ mod collector;
 mod event;
 
 use crate::filesystem::FileSystem;
+use crate::inode::extent::Entry;
 use crate::inode::RawInodeAddressingMode;
 use crate::{BlockGroupId, Config, FileType, FsError, InodeNumber, LogicalBlockNumber};
 use alloc::collections::LinkedList;
 use core::cell::RefCell;
 use event::{
-    BlockAllocationOnBg, BlockDeallocationOnBg, InodeAddLink, InodeAllocationOnBg,
-    InodeDeallocationOnBg, InodeRmLink, InodeSetSize, InodeUpdateOrphanLink,
+    BlockAllocationOnBg, BlockDeallocationOnBg, ExtentNodeOps, Init, InodeAddLink,
+    InodeAllocationOnBg, InodeDeallocationOnBg, InodeRmLink, InodeSetSize, InodeUpdateOrphanLink,
+    InodeUpdateRoot, InsertAt, ReplaceAt, SetEntriesCnt,
 };
 
 pub use collector::Collector;
@@ -211,6 +213,77 @@ impl Transaction {
                 pred,
                 succ,
             }))
+    }
+
+    #[inline]
+    pub fn inode_update_root(&self, ino: InodeNumber, address: RawInodeAddressingMode) {
+        self.events
+            .inner
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .push_back(Event::InodeUpdateRoot(InodeUpdateRoot { ino, address }))
+    }
+
+    pub(crate) fn extent_update_node_insert_at(
+        &self,
+        node_lba: LogicalBlockNumber,
+        entry: Entry,
+        at: usize,
+    ) {
+        self.events
+            .inner
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .push_back(Event::ExtentUpdateNode(ExtentNodeOps::InsertAt(InsertAt {
+                node_lba,
+                at,
+                entry,
+            })));
+    }
+
+    pub(crate) fn extent_update_node_replace_at(
+        &self,
+        node_lba: LogicalBlockNumber,
+        entry: Entry,
+        at: usize,
+    ) {
+        self.events
+            .inner
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .push_back(Event::ExtentUpdateNode(ExtentNodeOps::ReplaceAt(
+                ReplaceAt {
+                    node_lba,
+                    at,
+                    entry,
+                },
+            )));
+    }
+
+    pub(crate) fn extent_update_node_set_entries_cnt(&self, node_lba: LogicalBlockNumber, v: u16) {
+        self.events
+            .inner
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .push_back(Event::ExtentUpdateNode(ExtentNodeOps::SetEntriesCnt(
+                SetEntriesCnt { node_lba, v },
+            )));
+    }
+
+    pub(crate) fn extent_init_node(&self, node_lba: LogicalBlockNumber, depth: u16) {
+        self.events
+            .inner
+            .as_ref()
+            .unwrap()
+            .borrow_mut()
+            .push_back(Event::ExtentUpdateNode(ExtentNodeOps::Init(Init {
+                node_lba,
+                depth,
+            })));
     }
 
     #[inline]

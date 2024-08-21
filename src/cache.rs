@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{RwDreamer, RwLock};
+use crate::{std::RwLock, RwDreamer};
 use alloc::sync::{Arc, Weak};
 use hashbrown::{hash_map::Entry, HashMap};
 

@@ -124,7 +124,6 @@ impl synchronizations::ticket_lock::Dreamer for SpinningDreamer {
     fn release_hook(&self) {}
 }
 
-
 /// A Opaque dreamer for RwLock.
 ///
 /// We will not use the implementation of synchromization::RwLock on std.
@@ -150,18 +149,11 @@ impl synchronizations::rwlock::Dreamer for OpaqueDreamer {
         unreachable!()
     }
     #[inline]
-    fn acquire_hook(
-        &self,
-        _h: synchronizations::rwlock::Hint,
-        _d: bool,
-    ) {
+    fn acquire_hook(&self, _h: synchronizations::rwlock::Hint, _d: bool) {
         unreachable!()
     }
     #[inline]
-    fn release_hook(
-        &self,
-        _h: synchronizations::rwlock::Hint,
-    ) {
+    fn release_hook(&self, _h: synchronizations::rwlock::Hint) {
         unreachable!()
     }
 }
@@ -229,7 +221,6 @@ impl Config for std::fs::File {
         }
     }
 }
-
 
 #[cfg(test)]
 pub(crate) mod tests {
