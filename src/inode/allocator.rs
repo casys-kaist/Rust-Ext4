@@ -85,7 +85,7 @@ impl<C: Config> Allocator<C> {
             loop {
                 // CAS to get bits.
                 let val = bits.load(Ordering::Relaxed);
-                let x = val ^ core::u8::MAX;
+                let x = val ^ u8::MAX;
                 if x != 0 {
                     // toggle all bits.
                     let (mask, ret) = {

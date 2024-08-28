@@ -24,6 +24,7 @@ use crate::{Config, FileBlockNumber, FsError, InodeNumber, LogicalBlockNumber};
 
 use self::path::Path;
 pub(crate) use cursor::{Cursor, CursorMut};
+use synchronizations::rwlock::RwLock;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Internal {
@@ -190,7 +191,7 @@ pub struct ExtentTree<C: Config> {
     pub(super) depth: u16,
     pub(super) b: [u8; 48],
     #[cfg(feature = "extent_cache")]
-    pub(super) cache: crate::RwLock<Option<Leaf>, C::D>,
+    pub(super) cache: RwLock<Option<Leaf>, C::D>,
     #[cfg(not(feature = "extent_cache"))]
     pub(super) _l: core::marker::PhantomData<C::D>,
 }
@@ -331,7 +332,7 @@ impl<C: Config> Default for ExtentTree<C> {
             depth: 0,
             b: [0; 48],
             #[cfg(feature = "extent_cache")]
-            cache: crate::RwLock::new(None),
+            cache: RwLock::new(None),
             #[cfg(not(feature = "extent_cache"))]
             _l: core::marker::PhantomData,
         }
@@ -544,7 +545,7 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> ExtentHeaderMut for Node<'a, 'b, 
 
 impl<C: Config> ExtentTree<C> {
     #[inline]
-    fn insert_at(&mut self, ext: Entry, at: usize) -> Result<(), Entry> {
+    fn insert_at(&mut self, ext: Entry, at: usize, _tx: &Transaction) -> Result<(), Entry> {
         let (max_entries_cnt, entries_cnt, depth) = (
             self.get_max_entries_cnt(),
             self.get_entries_cnt(),
@@ -556,7 +557,7 @@ impl<C: Config> ExtentTree<C> {
         .map(|_| self.set_entries_cnt(self.get_entries_cnt() + 1))
     }
     #[inline]
-    fn replace_at(&mut self, ext: Entry, at: usize) -> Result<(), Entry> {
+    fn replace_at(&mut self, ext: Entry, at: usize, _tx: &Transaction) -> Result<(), Entry> {
         let (entries_cnt, depth) = (self.get_entries_cnt(), self.get_depth());
 
         replace_at(entries_cnt, depth, ext, at, || ByteRw::new(&mut self.b))
@@ -565,7 +566,7 @@ impl<C: Config> ExtentTree<C> {
 
 impl<'a, 'b, C: Config, const BLK_SIZE: usize> Node<'a, 'b, C, BLK_SIZE, true> {
     #[inline]
-    fn insert_at(&mut self, ext: Entry, at: usize) -> Result<(), Entry> {
+    fn insert_at(&mut self, ext: Entry, at: usize, tx: &Transaction) -> Result<(), Entry> {
         let (max_entries_cnt, entries_cnt, depth) = (
             self.get_max_entries_cnt(),
             self.get_entries_cnt(),
@@ -574,19 +575,114 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize> Node<'a, 'b, C, BLK_SIZE, true> {
         {
             let mut guard = self.b.write();
 
-            insert_at(max_entries_cnt, entries_cnt, depth, ext, at, || {
+            insert_at(max_entries_cnt, entries_cnt, depth, ext.clone(), at, || {
                 ByteRw::new(&mut guard[12..])
+            })
+        }
+        .map(|_| {
+            tx.extent_update_node_insert_at(self.b.lba(), ext, at);
+            self.set_entries_cnt(self.get_entries_cnt() + 1)
+        })
+    }
+    #[inline]
+    fn replace_at(&mut self, ext: Entry, at: usize, tx: &Transaction) -> Result<(), Entry> {
+        let (entries_cnt, depth) = (self.get_entries_cnt(), self.get_depth());
+        let mut guard = self.b.write();
+
+        replace_at(entries_cnt, depth, ext.clone(), at, || {
+            ByteRw::new(&mut guard[12..])
+        })
+        .map(|_| tx.extent_update_node_replace_at(self.b.lba(), ext, at))
+    }
+}
+
+pub struct RawNode<const BLK_SIZE: usize> {
+    rw: ByteRw<[u8; BLK_SIZE]>,
+}
+
+impl<const BLK_SIZE: usize> RawNode<BLK_SIZE> {
+    pub fn from_raw(rw: [u8; BLK_SIZE]) -> Self {
+        Self {
+            rw: ByteRw::new(rw),
+        }
+    }
+
+    pub fn init(&mut self, depth: u16) {
+        self.rw.write_u16(0, 0xF30A);
+        self.rw.write_u16(2, 0);
+        self.rw.write_u16(4, ((BLK_SIZE - 16) / 12) as u16);
+        self.rw.write_u16(6, depth);
+    }
+
+    pub fn get_entries_cnt(&self) -> u16 {
+        self.rw.read_u16(2)
+    }
+
+    pub fn get_max_entries_cnt(&self) -> u16 {
+        self.rw.read_u16(4)
+    }
+
+    pub fn get_depth(&self) -> u16 {
+        self.rw.read_u16(6)
+    }
+
+    pub fn get(&self, index: usize) -> Option<Entry> {
+        if index < self.get_entries_cnt() as usize {
+            if self.get_depth() == 0 {
+                let (len, is_init) = {
+                    let v = self.rw.read_u16(12 + 12 * index + 4);
+                    let is_init = v <= 0x8000;
+                    (if is_init { v } else { v - 0x8000 }, is_init)
+                };
+                Some(Entry::Leaf(Leaf {
+                    block: FileBlockNumber(self.rw.read_u32(12 + 12 * index)),
+                    start: LogicalBlockNumber(merge_u32(
+                        self.rw.read_u16(12 + 12 * index + 6) as u32,
+                        self.rw.read_u32(12 + 12 * index + 8),
+                    )),
+                    len,
+                    is_init,
+                }))
+            } else {
+                Some(Entry::Internal(Internal {
+                    block: FileBlockNumber(self.rw.read_u32(12 + 12 * index)),
+                    next_node: LogicalBlockNumber(merge_u32(
+                        self.rw.read_u16(12 + 12 * index + 8) as u32,
+                        self.rw.read_u32(12 + 12 * index + 4),
+                    )),
+                }))
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn set_entries_cnt(&mut self, v: u16) {
+        self.rw.write_u16(2, v);
+    }
+
+    pub fn insert_at(&mut self, ext: Entry, at: usize) -> Result<(), Entry> {
+        let (max_entries_cnt, entries_cnt, depth) = (
+            self.get_max_entries_cnt(),
+            self.get_entries_cnt(),
+            self.get_depth(),
+        );
+        {
+            insert_at(max_entries_cnt, entries_cnt, depth, ext, at, || {
+                ByteRw::new(&mut self.rw.b[12..])
             })
         }
         .map(|_| self.set_entries_cnt(self.get_entries_cnt() + 1))
     }
-    #[inline]
-    fn replace_at(&mut self, ext: Entry, at: usize) -> Result<(), Entry> {
-        let (entries_cnt, depth) = (self.get_entries_cnt(), self.get_depth());
-        let mut guard = self.b.write();
 
+    pub fn replace_at(&mut self, ext: Entry, at: usize) -> Result<(), Entry> {
+        let (entries_cnt, depth) = (self.get_entries_cnt(), self.get_depth());
         replace_at(entries_cnt, depth, ext, at, || {
-            ByteRw::new(&mut guard[12..])
+            ByteRw::new(&mut self.rw.b[12..])
         })
+    }
+
+    pub fn to_raw(self) -> [u8; BLK_SIZE] {
+        self.rw.b
     }
 }

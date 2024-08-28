@@ -44,6 +44,7 @@ name = "fs_core"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "path",
 ]
 
 [[package]]
@@ -91,6 +92,10 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "path"
+version = "0.1.0"
 
 [[package]]
 name = "ppv-lite86"

@@ -244,7 +244,7 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::run_test;
+    use crate::std::tests::run_test;
     use crate::FileType;
 
     #[test]

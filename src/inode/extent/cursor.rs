@@ -166,7 +166,7 @@ where
             for i in 0..len {
                 self.fs
                     .blocks
-                    .get_mut_noload(n + (i as u64), &self.tx.collector)?;
+                    .get_mut_noload(n + (i as u64), Some(&self.tx.collector))?;
             }
         }
 

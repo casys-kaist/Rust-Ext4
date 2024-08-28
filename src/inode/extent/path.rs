@@ -15,6 +15,7 @@
 use super::{Entry, ExtentHeader, ExtentHeaderMut, ExtentTree, Internal, Leaf, Node};
 use crate::block::BlockRef;
 use crate::filesystem::FileSystem;
+use crate::inode::RawInodeAddressingMode;
 use crate::transaction::Transaction;
 use crate::utils::ByteRw;
 use crate::{Config, FileBlockNumber, FsError, InodeNumber, LogicalBlockNumber};
@@ -353,7 +354,11 @@ where
         }
     }
 
-    fn insert_leaf(&mut self, new: Leaf) -> Result<Option<Leaf>, FsError> {
+    // ### Extent Tree Logging
+    // ### Root modificiation -> process at path level
+    // ### Node modification -> if only Node::set_entries_cnt is called, process at path level, otherwise process at node level
+
+    fn insert_leaf(&mut self, new: Leaf, tx: &Transaction) -> Result<Option<Leaf>, FsError> {
         let leaf = self.get_leaf();
 
         if leaf.as_ref().map(|l| l.block == new.block).unwrap_or(false) {
@@ -381,8 +386,22 @@ where
                             is_init,
                         }),
                         index.unwrap(),
+                        tx,
                     )
                     .unwrap_or_else(|_| unreachable!());
+
+                    if let PathEntry::Root((updated, _)) = self.last() {
+                        tx.inode_update_root(
+                            self.ino,
+                            RawInodeAddressingMode::Extent {
+                                entries_cnt: updated.entries_cnt,
+                                max_entries_cnt: updated.max_entries_cnt,
+                                depth: updated.depth,
+                                b: updated.b,
+                            },
+                        );
+                    }
+
                     return Ok(None);
                 }
             }
@@ -399,15 +418,26 @@ where
 
             let mut pos = index.unwrap();
             let updated_start = new.block;
-            if let Err(_en) = node.insert_at(Entry::Leaf(new), pos) {
+            if let Err(_en) = node.insert_at(Entry::Leaf(new.clone()), pos, tx) {
                 todo!()
             }
+            if let PathEntry::Root((updated, _)) = self.last() {
+                tx.inode_update_root(
+                    self.ino,
+                    RawInodeAddressingMode::Extent {
+                        entries_cnt: updated.entries_cnt,
+                        max_entries_cnt: updated.max_entries_cnt,
+                        depth: updated.depth,
+                        b: updated.b,
+                    },
+                );
+            }
 
-            for idx in (0..self.len() - 1).rev() {
+            for i in (0..self.len() - 1).rev() {
                 if pos != 0 {
                     break;
                 }
-                dispatch_entry_mut!(self.get_mut(idx).unwrap(), |node, idx| {
+                dispatch_entry_mut!(self.get_mut(i).unwrap(), |node, idx| {
                     pos = idx.unwrap();
                     let prev = node.get(pos).unwrap().get_internal().unwrap();
                     node.replace_at(
@@ -416,8 +446,25 @@ where
                             next_node: prev.next_node,
                         }),
                         pos,
+                        tx,
                     )
                     .unwrap_or_else(|_| unreachable!());
+
+                    if i == 0 {
+                        if let PathEntry::Root((updated, _)) = self.get(0).unwrap() {
+                            tx.inode_update_root(
+                                self.ino,
+                                RawInodeAddressingMode::Extent {
+                                    entries_cnt: updated.entries_cnt,
+                                    max_entries_cnt: updated.max_entries_cnt,
+                                    depth: updated.depth,
+                                    b: updated.b,
+                                },
+                            );
+                        } else {
+                            unreachable!();
+                        }
+                    }
                 });
             }
 
@@ -441,7 +488,10 @@ where
                 (ino.0 as u64 - 1) / fs.sb.inodes_per_group as u64,
             ));
         let lba = fs.blocks.allocate(self.ino, 1, hope, fs, tx)?.0;
-        let b = fs.blocks.get_mut_noload(lba, &tx.collector)?;
+
+        // let b = fs.blocks.get_mut_noload(lba, Some(&tx.collector))?;
+        // ### To prevent the collector from tracking the extent node block.
+        let b = fs.blocks.get_mut_noload(lba, None)?;
         {
             // Initialize the node.
             let mut guard = b.write();
@@ -453,8 +503,11 @@ where
         }
 
         let mut node = Node::from_bytes(b).unwrap();
+        tx.extent_init_node(lba, root.get_depth());
+
         for i in 0..root.get_entries_cnt() as usize {
-            node.insert_at(root.get(i).unwrap(), i)
+            let entry = root.get(i).unwrap();
+            node.insert_at(entry.clone(), i, tx)
                 .unwrap_or_else(|_| unreachable!());
         }
 
@@ -466,12 +519,24 @@ where
                 next_node: lba,
             }),
             0,
+            tx,
         )
         .unwrap_or_else(|_| unreachable!());
+        if let PathEntry::Root((updated, _)) = self.get(0).unwrap() {
+            tx.inode_update_root(
+                self.ino,
+                RawInodeAddressingMode::Extent {
+                    entries_cnt: updated.entries_cnt,
+                    max_entries_cnt: updated.max_entries_cnt,
+                    depth: updated.depth,
+                    b: updated.b,
+                },
+            );
+        }
         Ok(())
     }
 
-    fn insert_internal(&mut self, ext: Internal, at: usize) -> bool {
+    fn insert_internal(&mut self, ext: Internal, at: usize, tx: &Transaction) -> bool {
         // Find location for insertion.
         dispatch_entry_mut!(self.get_mut(at).unwrap(), |node, idx| {
             let loc = if node.is_full() {
@@ -483,8 +548,22 @@ where
             } else {
                 idx.unwrap()
             };
-            node.insert_at(Entry::Internal(ext), loc)
+            node.insert_at(Entry::Internal(ext), loc, tx)
                 .unwrap_or_else(|_| unreachable!());
+            if at == 0 {
+                if let PathEntry::Root((updated, _)) = self.get(0).unwrap() {
+                    tx.inode_update_root(
+                        self.ino,
+                        RawInodeAddressingMode::Extent {
+                            entries_cnt: updated.entries_cnt,
+                            max_entries_cnt: updated.max_entries_cnt,
+                            depth: updated.depth,
+                            b: updated.b,
+                        },
+                    );
+                }
+            }
+
             true
         })
     }
@@ -511,7 +590,7 @@ where
             let (lba, _) = fs
                 .blocks
                 .allocate(self.ino, 1, LogicalBlockNumber(0), fs, tx)?;
-            let e = fs.blocks.get_mut_noload(lba, &tx.collector)?;
+            let e = fs.blocks.get_mut_noload(lba, None)?;
             blocks.push(e);
         }
 
@@ -521,6 +600,12 @@ where
             .enumerate()
             .map(|(d, hdr_b)| {
                 // Leaf.
+                let node_lba = if let Some(PathEntry::Leaf((node, _))) = self.get(d + at) {
+                    Some(node.b.lba())
+                } else {
+                    None
+                };
+
                 dispatch_entry_mut!(self.get_mut(d + at).unwrap(), |ext, idx| {
                     // Leaf node.
                     if d + at == depth {
@@ -549,13 +634,17 @@ where
                         // To insert here.
 
                         let mut node = Node::from_bytes(hdr_b).unwrap();
+                        tx.extent_init_node(node.b.lba(), ext.get_depth());
+
                         let base = idx.unwrap();
                         let move_amount = ext.get_entries_cnt() as usize - base - 1;
                         for i in 0..move_amount {
-                            node.insert_at(ext.get(base + i + 1).unwrap(), i)
+                            node.insert_at(ext.get(base + i + 1).unwrap(), i, tx)
                                 .unwrap_or_else(|_| unreachable!());
                         }
                         ext.set_entries_cnt(base as u16 + 1);
+                        tx.extent_update_node_set_entries_cnt(node_lba.unwrap(), base as u16 + 1);
+
                         node.into_inner()
                     } else {
                         todo!()
@@ -570,6 +659,7 @@ where
                 block: insert_idx,
             },
             at - 1,
+            tx,
         )
         .then(|| (new.block >= insert_idx, blocks))
         .ok_or(FsError::InvalidFs("Extent Tree is corrupted."))
@@ -583,7 +673,7 @@ where
         fs: &'a FileSystem<C, BLK_SIZE>,
     ) -> Result<Option<Leaf>, FsError> {
         loop {
-            if let Some(l) = self.insert_leaf(new)? {
+            if let Some(l) = self.insert_leaf(new, tx)? {
                 new = l;
             } else {
                 break Ok(None);
@@ -601,7 +691,7 @@ where
             };
 
             let (need_fix, blks) = self
-                .split_at(&new, self.len() - level - 1, tx, fs)
+                .split_at(&new, level + 1, tx, fs)
                 .map_err(|_| FsError::IoError)?;
 
             if need_fix {
@@ -692,6 +782,11 @@ where
                 tx,
             )?;
         }
+        let node_lba = if let Some((node, _)) = self.leafs.last() {
+            Some(node.b.lba())
+        } else {
+            None
+        };
         dispatch_entry_mut!(self.last_mut(), |node, idx| {
             if new_len != 0 {
                 let idx = idx.unwrap();
@@ -701,10 +796,33 @@ where
                         ..leaf
                     }),
                     idx,
+                    tx,
                 )
                 .unwrap();
             } else {
-                node.set_entries_cnt(node.get_entries_cnt().checked_sub(1).unwrap_or_default());
+                let cnt = node.get_entries_cnt().checked_sub(1).unwrap_or_default();
+                node.set_entries_cnt(cnt);
+                match node_lba {
+                    Some(lba) => {
+                        // Node
+                        tx.extent_update_node_set_entries_cnt(lba, cnt);
+                    }
+                    None => {
+                        // Root
+                        if let PathEntry::Root((updated, _)) = self.get(0).unwrap() {
+                            assert_eq!(updated.entries_cnt, cnt);
+                            tx.inode_update_root(
+                                self.ino,
+                                RawInodeAddressingMode::Extent {
+                                    entries_cnt: updated.entries_cnt,
+                                    max_entries_cnt: updated.max_entries_cnt,
+                                    depth: updated.depth,
+                                    b: updated.b,
+                                },
+                            );
+                        }
+                    }
+                }
                 self.move_prev_with_cleanup(tx, fs)?;
             }
         });
@@ -725,6 +843,11 @@ where
                 Some(0) if len != 1 => {
                     len -= 1;
                     let (p_node, _) = self.leafs.pop().unwrap();
+                    let node_lba = if let PathEntry::Leaf((node, _)) = self.last() {
+                        Some(node.b.lba())
+                    } else {
+                        None
+                    };
                     dispatch_entry_mut!(self.last_mut(), |node, idx| {
                         // cleanup
                         if p_node.get_entries_cnt() == 0 {
@@ -739,6 +862,29 @@ where
                             fs.blocks.deallocate(ino, lba, 1, fs, tx)?;
 
                             node.set_entries_cnt(new_count);
+                            match node_lba {
+                                Some(node_lba) => {
+                                    // Node
+                                    tx.extent_update_node_set_entries_cnt(node_lba, new_count);
+                                }
+                                None => {
+                                    // Root
+                                    // assert_eq!(self.len(), 1);
+                                    if let PathEntry::Root((updated, _)) = self.get(0).unwrap() {
+                                        // assert_eq!(updated.entries_cnt, new_count);
+                                        tx.inode_update_root(
+                                            ino,
+                                            RawInodeAddressingMode::Extent {
+                                                entries_cnt: updated.entries_cnt,
+                                                max_entries_cnt: updated.max_entries_cnt,
+                                                depth: updated.depth,
+                                                b: updated.b,
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+
                             if new_count != 0 {
                                 break;
                             }

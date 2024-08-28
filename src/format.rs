@@ -65,7 +65,8 @@ impl<'a> FormatAux<'a> {
             feat_ro: Ext4FeatureReadOnly::SPARSE_SUPER
                 | Ext4FeatureReadOnly::LARGE_FILE
                 | Ext4FeatureReadOnly::GDT_CSUM,
-            feat_com: Ext4FeatureCompatible::DIR_INDEX,
+            feat_com: Ext4FeatureCompatible::DIR_INDEX, // ### No journal disk
+            // feat_com: Ext4FeatureCompatible::DIR_INDEX | Ext4FeatureCompatible::HAS_JOURNAL, // ### Has journal disk
             feat_incom: Ext4FeatureIncompatible::FILETYPE | Ext4FeatureIncompatible::EXTENTS,
             uuid,
             volumn_name,
@@ -116,6 +117,10 @@ fn make_sb<C: Config, const BLK_SIZE: usize>(
     sb.rev_level().set(1);
     sb.first_inode().set(11);
     sb.inode_size().set(256);
+
+    if feat_com.contains(Ext4FeatureCompatible::HAS_JOURNAL) {
+        sb.journal_inum().set(8); // ### Journal inode number = 8
+    }
 
     sb.rw.b.as_mut()[0x68..0x78].copy_from_slice(uuid);
     sb.rw.b.as_mut()[0x78..0x88].copy_from_slice(volumn_name);
@@ -183,9 +188,19 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
                     .as_mut(),
             );
             if bgid.0 == 0 {
+                // ino 2 -> Root, ino 8 -> Journal
                 inode_bitmap.set_bitmap(0..1);
-                inode_bitmap.set_bitmap(2..10);
-                free_inodes -= 9;
+                if sb
+                    .features_compatible
+                    .contains(Ext4FeatureCompatible::HAS_JOURNAL)
+                {
+                    inode_bitmap.set_bitmap(2..7);
+                    inode_bitmap.set_bitmap(8..10);
+                    free_inodes -= 8;
+                } else {
+                    inode_bitmap.set_bitmap(2..10);
+                    free_inodes -= 9;
+                }
             }
             // Set end of inode bitmap. kill 1) unusable 2) padding.
             inode_bitmap.set_bitmap(sb.inodes_per_group as usize..BLK_SIZE * 8);
@@ -267,6 +282,39 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
     Ok(())
 }
 
+pub fn make_journal_disk<C: Config, const BLK_SIZE: usize>(
+    fs: &Arc<FileSystem<C, BLK_SIZE>>,
+) -> Result<(), FsError> {
+    if !fs
+        .sb
+        .features_compatible
+        .contains(Ext4FeatureCompatible::HAS_JOURNAL)
+    {
+        // No journal disk
+        return Ok(());
+    }
+    let journal_inum = 8;
+    let ino = fs
+        .inodes
+        .allocator
+        .try_allocate_at(journal_inum, fs)?
+        .unwrap();
+    let tx = fs.open_transaction();
+    let guard = fs.get_block_group(BlockGroupId(0))?;
+    let bg = guard.as_ref().unwrap();
+    let de = FileType::Directory;
+
+    bg.allocate_inode_on_bg(journal_inum - 1, &tx, de);
+    fs.sb.dec_free_inodes_count(&tx);
+    let _inode = fs
+        .inodes
+        .inodes
+        .get_or_insert::<_, ()>(ino, |ino| Ok(Inode::new(fs, ino, de)))
+        .unwrap();
+
+    tx.done(fs)
+}
+
 fn make_root<C: Config, const BLK_SIZE: usize>(
     fs: &Arc<FileSystem<C, BLK_SIZE>>,
 ) -> Result<(), FsError> {
@@ -317,15 +365,20 @@ pub fn format<C: Config, const BLK_SIZE: usize>(
     );
     let mut sb = make_sb::<C, BLK_SIZE>(aux);
     fill_bg(&dev, &mut sb)?;
-    dev.write_bytes(1024, &sb.manipulator.lock().rw.inner().0)?;
+    const BUFSIZE: usize = 1024;
+    let mut buf = C::Buffer::<BUFSIZE>::zeroed();
+    buf.as_mut()[0..BUFSIZE]
+        .copy_from_slice(sb.manipulator.lock().rw.inner().0[0..BUFSIZE].as_ref());
+    dev.write_bytes(1024, &buf)?;
     let fs = FileSystem::<C, BLK_SIZE>::new(dev, sb);
+    make_journal_disk(&fs)?;
     make_root(&fs)?;
     Ok(fs)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::{make_disk, test_oracle};
+    use crate::std::tests::{make_disk, test_oracle};
 
     const M: u64 = 1024 * 1024;
     const G: u64 = 1024 * 1024 * 1024;

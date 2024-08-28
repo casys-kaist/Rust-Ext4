@@ -13,7 +13,7 @@
 // limitations under the License.
 
 mod allocator;
-mod extent;
+pub(crate) mod extent;
 mod legacy;
 mod manager;
 mod raw;

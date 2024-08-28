@@ -206,7 +206,7 @@ where
             let count = core::cmp::min(bg.blocks_count as usize - ofs, size);
             trans.block_deallocation_on_bg(ino, bgid, bg.block_bitmap_lba, ofs, count);
             size -= count;
-            lba = lba + (count as u64);
+            lba += count as u64;
         }
         Ok(())
     }
