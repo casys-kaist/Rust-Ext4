@@ -25,8 +25,8 @@ use crate::superblock::Ext4FeatureIncompatible;
 use crate::symlink::Symlink;
 use crate::transaction::Transaction;
 use crate::{
-    std::RwLock, Config, FileBlockNumber, FileType, FsError, FsObject, InodeMode, InodeNumber,
-    LogicalBlockNumber,
+    Config, FileBlockNumber, FileType, FsError, FsObject, InodeMode, InodeNumber,
+    LogicalBlockNumber, RwLock,
 };
 use alloc::sync::{Arc, Weak};
 use bitflags::bitflags;

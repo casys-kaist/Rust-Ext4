@@ -155,6 +155,8 @@ impl<C: Config, const N: usize> Manipulator<C, N> {
         feature_ro_compat: @0x64, u32;
         /// Number of reserved GDT entries for future filesystem expansion.
         reserverd_gdt_blocks: @0xCE, u16;
+        /// Inode number of journal file
+        journal_inum: @0xE0, u32;
         /// Start of list of orphaned inodes to delete.
         last_orphan: @0xE8, u32;
         /// Default hash algorithm to use for directory hashes.

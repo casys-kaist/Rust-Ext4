@@ -21,8 +21,8 @@ use crate::superblock::SuperBlock;
 use crate::transaction::{Collector, Transaction};
 use crate::types::Zero;
 use crate::{
-    std::RwLock, std::RwLockReadGuard, std::RwLockWriteGuard, BlockGroupId, Config, FsError,
-    InodeNumber, LogicalBlockNumber,
+    BlockGroupId, Config, FsError, InodeNumber, LogicalBlockNumber, RwLock, RwLockReadGuard,
+    RwLockWriteGuard,
 };
 use alloc::sync::Arc;
 

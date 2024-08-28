@@ -19,7 +19,7 @@ use crate::inode;
 use crate::superblock::SuperBlock;
 use crate::transaction::{Events, Transaction};
 use crate::types::BlockGroupId;
-use crate::{std::RwLock, std::RwLockReadGuard, Config, FileType, FsError, FsObject, InodeNumber};
+use crate::{Config, FileType, FsError, FsObject, InodeNumber, RwLock, RwLockReadGuard};
 use alloc::collections::LinkedList;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
