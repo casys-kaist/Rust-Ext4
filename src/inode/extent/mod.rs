@@ -24,6 +24,7 @@ use crate::{Config, FileBlockNumber, FsError, InodeNumber, LogicalBlockNumber};
 
 use self::path::Path;
 pub(crate) use cursor::{Cursor, CursorMut};
+use synchronizations::rwlock::RwLock;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Internal {
@@ -190,7 +191,7 @@ pub struct ExtentTree<C: Config> {
     pub(super) depth: u16,
     pub(super) b: [u8; 48],
     #[cfg(feature = "extent_cache")]
-    pub(super) cache: crate::std::RwLock<Option<Leaf>, C::D>,
+    pub(super) cache: RwLock<Option<Leaf>, C::D>,
     #[cfg(not(feature = "extent_cache"))]
     pub(super) _l: core::marker::PhantomData<C::D>,
 }
@@ -331,7 +332,7 @@ impl<C: Config> Default for ExtentTree<C> {
             depth: 0,
             b: [0; 48],
             #[cfg(feature = "extent_cache")]
-            cache: crate::std::RwLock::new(None),
+            cache: RwLock::new(None),
             #[cfg(not(feature = "extent_cache"))]
             _l: core::marker::PhantomData,
         }

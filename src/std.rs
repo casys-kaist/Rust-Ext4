@@ -138,23 +138,23 @@ impl synchronizations::rwlock::Dreamer for OpaqueDreamer {
 
     #[inline]
     fn sleeping(&self, _s: &core::sync::atomic::AtomicUsize, _h: synchronizations::rwlock::Hint) {
-        unreachable!()
+        ()
     }
     #[inline]
     fn waking_up(&self) {
-        unreachable!()
+        ()
     }
     #[inline]
     fn prehook(&self) -> Self::HookAux {
-        unreachable!()
+        ()
     }
     #[inline]
     fn acquire_hook(&self, _h: synchronizations::rwlock::Hint, _d: bool) {
-        unreachable!()
+        ()
     }
     #[inline]
     fn release_hook(&self, _h: synchronizations::rwlock::Hint) {
-        unreachable!()
+        ()
     }
 }
 

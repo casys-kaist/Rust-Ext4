@@ -15,7 +15,7 @@
 use crate::filesystem::FileSystem;
 use crate::transaction::Transaction;
 use crate::types::BlockGroupId;
-use crate::{std::RwLock, std::RwLockReadGuard, Config, FileType, FsError, InodeNumber};
+use crate::{Config, FileType, FsError, InodeNumber, RwLock, RwLockReadGuard};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
