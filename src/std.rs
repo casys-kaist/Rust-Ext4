@@ -124,7 +124,6 @@ impl synchronizations::ticket_lock::Dreamer for SpinningDreamer {
     fn release_hook(&self) {}
 }
 
-
 /// A Opaque dreamer for RwLock.
 ///
 /// We will not use the implementation of synchromization::RwLock on std.
@@ -138,32 +137,15 @@ impl synchronizations::rwlock::Dreamer for OpaqueDreamer {
     type HookAux = ();
 
     #[inline]
-    fn sleeping(&self, _s: &core::sync::atomic::AtomicUsize, _h: synchronizations::rwlock::Hint) {
-        unreachable!()
-    }
+    fn sleeping(&self, _s: &core::sync::atomic::AtomicUsize, _h: synchronizations::rwlock::Hint) {}
     #[inline]
-    fn waking_up(&self) {
-        unreachable!()
-    }
+    fn waking_up(&self) {}
     #[inline]
-    fn prehook(&self) -> Self::HookAux {
-        unreachable!()
-    }
+    fn prehook(&self) -> Self::HookAux {}
     #[inline]
-    fn acquire_hook(
-        &self,
-        _h: synchronizations::rwlock::Hint,
-        _d: bool,
-    ) {
-        unreachable!()
-    }
+    fn acquire_hook(&self, _h: synchronizations::rwlock::Hint, _d: bool) {}
     #[inline]
-    fn release_hook(
-        &self,
-        _h: synchronizations::rwlock::Hint,
-    ) {
-        unreachable!()
-    }
+    fn release_hook(&self, _h: synchronizations::rwlock::Hint) {}
 }
 
 #[cfg(target_family = "unix")]
@@ -229,7 +211,6 @@ impl Config for std::fs::File {
         }
     }
 }
-
 
 #[cfg(test)]
 pub(crate) mod tests {

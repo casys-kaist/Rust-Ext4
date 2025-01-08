@@ -153,7 +153,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
         let is_lazy_init_bg = bgid.0 != 0 && bgid.0 != sb.bg_count - 1;
 
         // Cacluate free blocks and free inodes in group.
-        let free_blocks = core::cmp::min(sb.blocks_per_group as u64, total_blocks) as u32
+        let free_blocks = total_blocks.min(sb.blocks_per_group as u64) as u32
             - inode_blocks
             - if bgid.0 == bgs_count - 1 {
                 2 + sb.first_data_block
@@ -168,8 +168,7 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
             };
         let mut free_inodes = sb.inodes_per_group;
 
-        let block_bitmap_pad_back =
-            core::cmp::min(total_blocks as usize, sb.blocks_per_group as usize);
+        let block_bitmap_pad_back = (total_blocks as usize).min(sb.blocks_per_group as usize);
 
         total_blocks = total_blocks.saturating_sub(sb.blocks_per_group as u64);
         // if bgid is zero, init inode table and bitmap.
@@ -233,7 +232,6 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
                     .or_insert_with(C::Buffer::<BLK_SIZE>::zeroed)
                     .as_mut()[index..index + sb.block_desc_size],
             );
-
             bg.block_bitmap().set(start_block + 1);
             bg.inode_bitmap().set(start_block + 2);
             bg.inode_table().set(start_block + 3);
@@ -317,7 +315,7 @@ pub fn format<C: Config, const BLK_SIZE: usize>(
     );
     let mut sb = make_sb::<C, BLK_SIZE>(aux);
     fill_bg(&dev, &mut sb)?;
-    dev.write_bytes(1024, &sb.manipulator.lock().rw.inner().0)?;
+    dev.write_bytes(0, &sb.manipulator.lock().rw.inner().0)?;
     let fs = FileSystem::<C, BLK_SIZE>::new(dev, sb);
     make_root(&fs)?;
     Ok(fs)
@@ -333,7 +331,6 @@ mod tests {
     fn run(path: std::path::PathBuf) -> bool {
         let r = test_oracle(path.as_path());
         let _ = std::fs::remove_file(path);
-        println!("next");
         r
     }
 
