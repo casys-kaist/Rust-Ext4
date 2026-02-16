@@ -112,7 +112,7 @@ where
     /// holds the lock is left unspecified. However, this function will not
     /// return on the second call (it might panic or deadlock, for example).
     #[track_caller]
-    pub fn lock(&self) -> SimpleLockGuard<T, D> {
+    pub fn lock(&self) -> SimpleLockGuard<'_, T, D> {
         let h = self.dreamer.prehook();
 
         if self
@@ -152,7 +152,7 @@ where
     ///
     /// This function does not block.
     #[track_caller]
-    pub fn try_lock(&self) -> Result<SimpleLockGuard<T, D>, crate::WouldBlock> {
+    pub fn try_lock(&self) -> Result<SimpleLockGuard<'_, T, D>, crate::WouldBlock> {
         let h = self.dreamer.prehook();
         if self
             .locked

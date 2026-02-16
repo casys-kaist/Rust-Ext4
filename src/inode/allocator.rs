@@ -40,7 +40,7 @@ impl<C: Config> Allocator<C> {
         &self,
         bgid: BlockGroupId,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) -> Result<RwLockReadGuard<Bitmap, C::D>, FsError> {
+    ) -> Result<RwLockReadGuard<'_, Bitmap, C::D>, FsError> {
         let guard = self.bitmap[bgid.0 as usize].read();
         if guard.is_some() {
             Ok(guard)
@@ -85,7 +85,7 @@ impl<C: Config> Allocator<C> {
             loop {
                 // CAS to get bits.
                 let val = bits.load(Ordering::Relaxed);
-                let x = val ^ core::u8::MAX;
+                let x = val ^ u8::MAX;
                 if x != 0 {
                     // toggle all bits.
                     let (mask, ret) = {

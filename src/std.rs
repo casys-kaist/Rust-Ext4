@@ -25,7 +25,7 @@ pub struct RwLockReadGuard<'a, V, D> {
 impl<'a, V, D> std::ops::Deref for RwLockReadGuard<'a, V, D> {
     type Target = V;
     fn deref(&self) -> &Self::Target {
-        &*self.inner
+        &self.inner
     }
 }
 #[repr(transparent)]
@@ -36,12 +36,12 @@ pub struct RwLockWriteGuard<'a, V, D> {
 impl<'a, V, D> std::ops::Deref for RwLockWriteGuard<'a, V, D> {
     type Target = V;
     fn deref(&self) -> &Self::Target {
-        &*self.inner
+        &self.inner
     }
 }
 impl<'a, V, D> std::ops::DerefMut for RwLockWriteGuard<'a, V, D> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.inner
+        &mut self.inner
     }
 }
 impl<V, D> RwLock<V, D> {
@@ -53,28 +53,28 @@ impl<V, D> RwLock<V, D> {
         }
     }
     #[inline]
-    pub fn write(&self) -> RwLockWriteGuard<V, D> {
+    pub fn write(&self) -> RwLockWriteGuard<'_, V, D> {
         RwLockWriteGuard {
             inner: self.inner.write().unwrap(),
             _p: std::marker::PhantomData,
         }
     }
     #[inline]
-    pub fn write_no_dep(&self) -> RwLockWriteGuard<V, D> {
+    pub fn write_no_dep(&self) -> RwLockWriteGuard<'_, V, D> {
         RwLockWriteGuard {
             inner: self.inner.write().unwrap(),
             _p: std::marker::PhantomData,
         }
     }
     #[inline]
-    pub fn read(&self) -> RwLockReadGuard<V, D> {
+    pub fn read(&self) -> RwLockReadGuard<'_, V, D> {
         RwLockReadGuard {
             inner: self.inner.read().unwrap(),
             _p: std::marker::PhantomData,
         }
     }
     #[inline]
-    pub fn try_write(&self) -> Result<RwLockWriteGuard<V, D>, ()> {
+    pub fn try_write(&self) -> Result<RwLockWriteGuard<'_, V, D>, ()> {
         self.inner
             .try_write()
             .map(|inner| RwLockWriteGuard {
@@ -84,7 +84,7 @@ impl<V, D> RwLock<V, D> {
             .map_err(|_| ())
     }
     #[inline]
-    pub fn try_read(&self) -> Result<RwLockReadGuard<V, D>, ()> {
+    pub fn try_read(&self) -> Result<RwLockReadGuard<'_, V, D>, ()> {
         self.inner
             .try_read()
             .map(|inner| RwLockReadGuard {

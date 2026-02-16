@@ -41,7 +41,7 @@ impl<'a, 'b, C: Config, const BLK_SIZE: usize, const MUT: bool> BlockRef<'a, 'b,
     }
 
     #[inline]
-    pub fn read(&self) -> RwLockReadGuard<C::Buffer<BLK_SIZE>, C::D> {
+    pub fn read(&self) -> RwLockReadGuard<'_, C::Buffer<BLK_SIZE>, C::D> {
         self.inner.read()
     }
 }

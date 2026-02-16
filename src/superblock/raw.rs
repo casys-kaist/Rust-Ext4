@@ -46,11 +46,11 @@ impl<C: Config, const N: usize> Manipulator<C, N> {
     #[inline]
     pub fn from_disk(dev: &C) -> Result<Self, FsError> {
         trait Spec<C: Config, const N: usize> {
-            fn new(dev: &C) -> Result<Manipulator<C, N>, FsError>;
+            fn try_new(dev: &C) -> Result<Manipulator<C, N>, FsError>;
         }
         struct SpecAdaptor<C: Config, const N: usize>(C);
         impl<C: Config, const N: usize> Spec<C, N> for SpecAdaptor<C, N> {
-            default fn new(dev: &C) -> Result<Manipulator<C, N>, FsError> {
+            default fn try_new(dev: &C) -> Result<Manipulator<C, N>, FsError> {
                 let b = dev.read_bytes::<N>(0)?;
                 Ok(Manipulator {
                     rw: ByteRw::new(Wrapper(b)),
@@ -58,7 +58,7 @@ impl<C: Config, const N: usize> Manipulator<C, N> {
             }
         }
         impl<C: Config> Spec<C, 1024> for SpecAdaptor<C, 1024> {
-            fn new(dev: &C) -> Result<Manipulator<C, 1024>, FsError> {
+            fn try_new(dev: &C) -> Result<Manipulator<C, 1024>, FsError> {
                 let b = dev.read_bytes::<1024>(1024)?;
 
                 Ok(Manipulator {
@@ -66,7 +66,7 @@ impl<C: Config, const N: usize> Manipulator<C, N> {
                 })
             }
         }
-        SpecAdaptor::<C, N>::new(dev)
+        SpecAdaptor::<C, N>::try_new(dev)
     }
 
     #[inline]

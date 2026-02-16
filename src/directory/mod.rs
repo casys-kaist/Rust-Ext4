@@ -134,7 +134,7 @@ impl<C: Config, const BLK_SIZE: usize> Directory<C, BLK_SIZE> {
     }
 
     #[inline]
-    pub(crate) fn get_scheme(&self, fs: &FileSystem<C, BLK_SIZE>) -> Scheme<C, BLK_SIZE> {
+    pub(crate) fn get_scheme(&self, fs: &FileSystem<C, BLK_SIZE>) -> Scheme<'_, C, BLK_SIZE> {
         let use_htree = fs
             .sb
             .features_compatible

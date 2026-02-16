@@ -59,8 +59,8 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
     }
 
     #[inline]
-    pub fn allocate_inode_as_fs_object<'a>(
-        self: &'a Arc<Self>,
+    pub fn allocate_inode_as_fs_object(
+        self: &Arc<Self>,
         ftype: FileType,
         tx: &Transaction,
     ) -> Result<(InodeNumber, FsObject<C, BLK_SIZE>), crate::FsError> {
@@ -84,7 +84,7 @@ impl<C: Config, const BLK_SIZE: usize> FileSystem<C, BLK_SIZE> {
     pub fn get_block_group(
         &self,
         bgid: BlockGroupId,
-    ) -> Result<RwLockReadGuard<Option<BlockGroup<BLK_SIZE>>, C::D>, FsError> {
+    ) -> Result<RwLockReadGuard<'_, Option<BlockGroup<BLK_SIZE>>, C::D>, FsError> {
         let guard = self.block_groups[bgid.0 as usize].read();
         if guard.is_some() {
             Ok(guard)

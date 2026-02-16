@@ -58,7 +58,7 @@ where
     }
 
     #[inline]
-    pub(crate) fn iter(&self) -> DirectoryBlockIterator<T, BLK_SIZE> {
+    pub(crate) fn iter(&self) -> DirectoryBlockIterator<'_, T, BLK_SIZE> {
         DirectoryBlockIterator {
             inner: self,
             pos: 0,
@@ -116,7 +116,7 @@ where
     }
 
     #[inline]
-    pub fn iter_mut(&mut self) -> DirectoryBlockIteratorMut<T, BLK_SIZE> {
+    pub fn iter_mut(&mut self) -> DirectoryBlockIteratorMut<'_, T, BLK_SIZE> {
         DirectoryBlockIteratorMut {
             block: self,
             pos: 0,
@@ -237,7 +237,7 @@ where
 {
     pub fn next(
         &mut self,
-    ) -> Option<Result<DirectoryBlockIteratorMutCursor<T, BLK_SIZE>, FsError>> {
+    ) -> Option<Result<DirectoryBlockIteratorMutCursor<'_, T, BLK_SIZE>, FsError>> {
         if !self.stopped && self.pos + 8 <= BLK_SIZE {
             let entry = if self.block.is_version2 {
                 DirectoryEntryDispatch::V2(ByteRw::new(&mut self.block.inner[self.pos..]))

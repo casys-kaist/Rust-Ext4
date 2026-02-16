@@ -40,7 +40,7 @@ where
     pub(crate) fn mode<C: Config, const BLK_SIZE: usize>(
         &mut self,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) -> CompoundAccessorU32<T, 0x0, 0x76> {
+    ) -> CompoundAccessorU32<'_, T, 0x0, 0x76> {
         const EXT4_SUPERBLOCK_OS_HURD: u32 = 1;
         CompoundAccessorU32::new(&mut self.rw, fs.sb.creator_os == EXT4_SUPERBLOCK_OS_HURD)
     }
@@ -49,7 +49,7 @@ where
     pub(crate) fn size<C: Config, const BLK_SIZE: usize>(
         &mut self,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) -> CompoundAccessorU64<T, 0x4, 0x6C> {
+    ) -> CompoundAccessorU64<'_, T, 0x4, 0x6C> {
         let use_hi = fs.sb.rev_level > 0 && matches!(self.detect_type(), FileType::RegularFile);
         CompoundAccessorU64::new(&mut self.rw, use_hi)
     }
@@ -58,7 +58,7 @@ where
     pub(crate) fn blocks<C: Config, const BLK_SIZE: usize>(
         &mut self,
         fs: &FileSystem<C, BLK_SIZE>,
-    ) -> CompoundAccessorU64<T, 0x1C, 0x74> {
+    ) -> CompoundAccessorU64<'_, T, 0x1C, 0x74> {
         let use_hi = fs
             .sb
             .features_readonly
@@ -130,7 +130,7 @@ where
     }
 
     #[inline]
-    pub(super) fn checksum(&mut self) -> CompoundAccessorU32<T, 0x7c, 0x82> {
+    pub(super) fn checksum(&mut self) -> CompoundAccessorU32<'_, T, 0x7c, 0x82> {
         let use_hi = self.rw.inner().as_ref().len() > EXT4_GOOD_OLD_INODE_SIZE;
         CompoundAccessorU32::new(&mut self.rw, use_hi)
     }

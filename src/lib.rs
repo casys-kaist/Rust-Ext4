@@ -18,16 +18,14 @@
 
 #![cfg_attr(feature = "no_std", no_std)]
 #![warn(unsafe_code)]
-#![feature(array_chunks, min_specialization)]
+#![feature(min_specialization)]
 
 #[cfg(not(feature = "no_std"))]
+#[allow(dead_code)]
 mod std;
 
 pub use synchronizations::rwlock::{
-    Dreamer as RwDreamer,
-    RwLock,
-    RwLockReadGuard,
-    RwLockWriteGuard
+    Dreamer as RwDreamer, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 pub use synchronizations::ticket_lock::{Dreamer, TicketLock, TicketLockGuard};
 

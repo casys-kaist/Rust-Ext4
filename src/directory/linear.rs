@@ -81,7 +81,7 @@ impl<'a, C: Config, const BLK_SIZE: usize> LinearScheme<'a, C, BLK_SIZE> {
                 let mut pen: Option<DirectoryEntryDispatch<&[u8]>> = None;
                 let dblk = DirectoryBlock::new(&**guard, fs);
                 let mut iter = dblk.iter();
-                while let Some(en) = iter.next() {
+                for en in iter.by_ref() {
                     if en_pos <= offset {
                         pen = Some(en?);
                         en_pos += pen.as_ref().unwrap().get_entry_len();

@@ -133,7 +133,7 @@ impl<C: Config, const BLK_SIZE: usize> SuperBlock<C, BLK_SIZE> {
         let blocks_count = manipulator.blocks_count().get();
         let bg_count = {
             let blocks_per_group = manipulator.blocks_per_group().get() as u64;
-            (blocks_count + blocks_per_group - 1) / blocks_per_group
+            blocks_count.div_ceil(blocks_per_group)
         } as u32;
 
         Self {
@@ -269,7 +269,7 @@ impl<C: Config, const BLK_SIZE: usize> SuperBlock<C, BLK_SIZE> {
 
             loop {
                 match n.cmp(&v) {
-                    _ if n % v != 0 => break false,
+                    _ if !n.is_multiple_of(v) => break false,
                     Ordering::Equal => break true,
                     Ordering::Less => break false,
                     Ordering::Greater => n /= v,

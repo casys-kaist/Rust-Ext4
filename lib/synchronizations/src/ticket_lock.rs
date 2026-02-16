@@ -134,7 +134,7 @@ where
     /// return on the second call (it might panic or deadlock, for example).
     #[inline]
     #[track_caller]
-    pub fn lock(&self) -> TicketLockGuard<T, D> {
+    pub fn lock(&self) -> TicketLockGuard<'_, T, D> {
         let h = self.dreamer.prehook();
 
         let ticket = unsafe { self.ticket.ticket_owner.1.fetch_add(1, Ordering::Relaxed) };
@@ -174,7 +174,7 @@ where
     /// This function does not block.
     #[inline]
     #[track_caller]
-    pub fn try_lock(&self) -> Result<TicketLockGuard<T, D>, crate::WouldBlock> {
+    pub fn try_lock(&self) -> Result<TicketLockGuard<'_, T, D>, crate::WouldBlock> {
         let h = self.dreamer.prehook();
 
         let prev = unsafe { self.ticket.ticket_owner.0.load(Ordering::Acquire) } as u64;

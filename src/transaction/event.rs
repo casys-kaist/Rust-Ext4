@@ -315,7 +315,7 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
 
     #[inline]
     fn bg_delta(&mut self, bgid: BlockGroupId) -> &mut BgDelta {
-        self.bg_deltas.entry(bgid).or_insert_with(BgDelta::default)
+        self.bg_deltas.entry(bgid).or_default()
     }
     #[inline]
     fn sb_delta(&mut self) -> &mut SbDelta {
@@ -442,10 +442,8 @@ impl<C: Config, const BLK_SIZE: usize> WritebackGroup<C, BLK_SIZE> {
             let mut manipulator =
                 block_group::Manipulator::new(&mut guard[off..off + fs.sb.block_desc_size]);
             if let Some(idx_in_bg) = max_alloc_idx_in_bg {
-                let bgs_count = ((fs.sb.blocks_count - (fs.sb.first_data_block as u64)
-                    + (fs.sb.blocks_per_group as u64)
-                    - 1)
-                    / (fs.sb.blocks_per_group as u64)) as u32;
+                let bgs_count = (fs.sb.blocks_count - (fs.sb.first_data_block as u64))
+                    .div_ceil(fs.sb.blocks_per_group as u64) as u32;
                 let inodes_in_bg = if bgs_count - 1 == bgid.0 {
                     fs.sb.inodes_count - fs.sb.inodes_per_group * (bgs_count - 1)
                 } else {

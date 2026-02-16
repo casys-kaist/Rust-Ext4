@@ -258,7 +258,7 @@ where
     /// once it is dropped.
     #[inline]
     #[track_caller]
-    pub fn read(&self) -> RwLockReadGuard<T, D> {
+    pub fn read(&self) -> RwLockReadGuard<'_, T, D> {
         if let Ok(guard) = self.try_read() {
             guard
         } else {
@@ -290,7 +290,7 @@ where
     /// lock first.
     #[inline]
     #[track_caller]
-    pub fn try_read(&self) -> Result<RwLockReadGuard<T, D>, crate::WouldBlock> {
+    pub fn try_read(&self) -> Result<RwLockReadGuard<'_, T, D>, crate::WouldBlock> {
         loop {
             let h = self.dreamer.prehook();
             let prev = self.state.load(Ordering::Relaxed);
@@ -343,7 +343,7 @@ where
     /// when dropped.
     #[inline]
     #[track_caller]
-    pub fn write(&self) -> RwLockWriteGuard<T, D> {
+    pub fn write(&self) -> RwLockWriteGuard<'_, T, D> {
         if let Ok(guard) = self.try_write() {
             guard
         } else {
@@ -367,7 +367,7 @@ where
     /// this write lock should not be included to lock-dependency analysis.
     #[inline]
     #[track_caller]
-    pub fn write_no_dep(&self) -> RwLockWriteGuard<T, D> {
+    pub fn write_no_dep(&self) -> RwLockWriteGuard<'_, T, D> {
         if let Ok(guard) = self.try_write_no_dep() {
             guard
         } else {
@@ -397,7 +397,7 @@ where
     /// ordering of whether contentious readers or writers will acquire the
     /// lock first.
     #[track_caller]
-    pub fn try_write(&self) -> Result<RwLockWriteGuard<T, D>, crate::WouldBlock> {
+    pub fn try_write(&self) -> Result<RwLockWriteGuard<'_, T, D>, crate::WouldBlock> {
         loop {
             let h = self.dreamer.prehook();
             let prev = self.state.load(Ordering::Relaxed);
@@ -429,7 +429,7 @@ where
     }
 
     #[track_caller]
-    pub fn try_write_no_dep(&self) -> Result<RwLockWriteGuard<T, D>, crate::WouldBlock> {
+    pub fn try_write_no_dep(&self) -> Result<RwLockWriteGuard<'_, T, D>, crate::WouldBlock> {
         loop {
             let h = self.dreamer.prehook();
             let prev = self.state.load(Ordering::Relaxed);

@@ -50,11 +50,11 @@ impl<'a> FormatAux<'a> {
     ) -> Self {
         let blocks_cnt = (total_size / block_size) as u64;
         let blocks_per_group = (block_size as u32) * 8;
-        let block_group = (blocks_cnt + (blocks_per_group as u64) - 1) / (blocks_per_group as u64);
+        let block_group = blocks_cnt.div_ceil(blocks_per_group as u64);
         let inodes_per_group = {
             // round up to 8.
             let tmp: u32 = (blocks_cnt / block_group / 4).try_into().unwrap();
-            (tmp + 15) / 16 * 16
+            tmp.div_ceil(16) * 16
         };
         let inodes_cnt = inodes_per_group.checked_mul(block_group as u32).unwrap();
 
@@ -135,12 +135,10 @@ fn fill_bg<C: Config, const BLK_SIZE: usize>(
     dev: &C,
     sb: &mut SuperBlock<C, BLK_SIZE>,
 ) -> Result<(), FsError> {
-    let bgs_count =
-        ((sb.blocks_count - (sb.first_data_block as u64) + (sb.blocks_per_group as u64) - 1)
-            / (sb.blocks_per_group as u64)) as u32;
-    let desc_blocks = ((sb.block_desc_size * bgs_count as usize + BLK_SIZE - 1) / BLK_SIZE) as u64;
-    let inode_blocks =
-        (((sb.inodes_per_group as usize) * sb.inode_size + BLK_SIZE - 1) / BLK_SIZE) as u32;
+    let bgs_count = (sb.blocks_count - (sb.first_data_block as u64))
+        .div_ceil(sb.blocks_per_group as u64) as u32;
+    let desc_blocks = (sb.block_desc_size * bgs_count as usize).div_ceil(BLK_SIZE) as u64;
+    let inode_blocks = ((sb.inodes_per_group as usize) * sb.inode_size).div_ceil(BLK_SIZE) as u32;
 
     let mut sb_manipulator = sb.manipulator.lock();
     let mut block_map = BTreeMap::new();

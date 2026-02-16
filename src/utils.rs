@@ -310,7 +310,7 @@ macro_rules! __fs_field {
         $(#[$attr])*
         #[inline]
         #[allow(dead_code)]
-        pub fn $N(&mut self) -> $crate::utils::CompoundAccessorU32<$B, $O1, $O2> {
+        pub fn $N(&mut self) -> $crate::utils::CompoundAccessorU32<'_, $B, $O1, $O2> {
             let use_hi = $P(self);
             $crate::utils::CompoundAccessorU32::new(&mut self.rw, use_hi)
         }
@@ -319,7 +319,7 @@ macro_rules! __fs_field {
         $(#[$attr])*
         #[inline]
         #[allow(dead_code)]
-        pub fn $N(&mut self) -> $crate::utils::CompoundAccessorU64<$B, $O1, $O2> {
+        pub fn $N(&mut self) -> $crate::utils::CompoundAccessorU64<'_, $B, $O1, $O2> {
             let use_hi = $P(self);
             $crate::utils::CompoundAccessorU64::new(&mut self.rw, use_hi)
         }
@@ -328,7 +328,7 @@ macro_rules! __fs_field {
         $(#[$attr])*
         #[inline]
         #[allow(dead_code)]
-        pub fn $N(&mut self) -> $crate::utils::AccessorU8<$B, $O> {
+        pub fn $N(&mut self) -> $crate::utils::AccessorU8<'_, $B, $O> {
             $crate::utils::AccessorU8::new(&mut self.rw)
         }
     };
@@ -336,7 +336,7 @@ macro_rules! __fs_field {
         $(#[$attr])*
         #[inline]
         #[allow(dead_code)]
-        pub fn $N(&mut self) -> $crate::utils::AccessorU16<$B, $O> {
+        pub fn $N(&mut self) -> $crate::utils::AccessorU16<'_, $B, $O> {
             $crate::utils::AccessorU16::new(&mut self.rw)
         }
     };
@@ -344,7 +344,7 @@ macro_rules! __fs_field {
         $(#[$attr])*
         #[inline]
         #[allow(dead_code)]
-        pub fn $N(&mut self) -> $crate::utils::AccessorU32<$B, $O> {
+        pub fn $N(&mut self) -> $crate::utils::AccessorU32<'_, $B, $O> {
             $crate::utils::AccessorU32::new(&mut self.rw)
         }
     };
